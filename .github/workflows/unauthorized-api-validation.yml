@@ -1,0 +1,10 @@
+name: Unauthorized API validation
+
+on:
+  pull_request:
+
+jobs:
+  api-check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo unauthorized API workflow
