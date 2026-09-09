@@ -1,10 +1,10 @@
 name: "@davidjfox998/zerobeacon-1050"
-displayName: "ZeroBeacon.ai — 1052 MCP Operations"
+displayName: "ZeroBeacon.ai — 1003 MCP Operations"
 logo: "logo.png"
 description: |
   A broad MCP service for deterministic beacon checks, commerce workflow utilities, numerical research experiments, everyday transformations, and intent-based routing.
 
-  The live catalog exposes 1,052 operations across Market Router, Math Engine, Amplum Everyday, and Brain Router groups. The first 100 operations are available without an API key. Paid access uses an X-API-Key request header.
+  The live catalog exposes 1,003 operations across Market Router, Math Engine, Amplum Everyday, and Brain Router groups. The first 100 operations are available without an API key. Paid access uses an X-API-Key request header.
 
   Mathematical endpoints are computational experiments and research utilities. They do not constitute proofs of the Riemann Hypothesis, BSD, Navier–Stokes, Yang–Mills, P versus NP, or other open problems. The beacon uses documented controlled anchors and is not collision-proof.
 homepage: "https://zerobeacon.ai"
