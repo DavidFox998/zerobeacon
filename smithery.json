@@ -1,6 +1,6 @@
 {
   "name": "@davidjfox998/zerobeacon-1050",
-  "displayName": "ZeroBeacon.ai — 1052 MCP Operations",
+  "displayName": "ZeroBeacon.ai — 1003 MCP Operations",
   "description": "A broad MCP service for deterministic beacon checks, commerce workflow utilities, numerical research experiments, everyday transformations, and intent-based routing. The first 100 operations are available without a key. Mathematical endpoints are computational tools and do not constitute proofs of open conjectures.",
   "homepage": "https://zerobeacon.ai",
   "repository": "https://github.com/DavidFox998/zerobeacon",
@@ -37,5 +37,5 @@
     "Mathematical operations are numerical or experimental utilities, not proofs of open conjectures.",
     "The beacon uses documented controlled anchors and is not collision-proof."
   ],
-  "architecture": "21 router modules exposing 1,052 MCP operations"
+  "architecture": "21 router modules exposing 1,003 MCP operations"
 }
