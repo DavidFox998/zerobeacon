@@ -1,8 +1,8 @@
-[![smithery badge](https://smithery.ai/badge/@davidjfox998/zerobeacon-1000)](https://smithery.ai/servers/@davidjfox998/zerobeacon-1000) [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21926563.svg)](https://doi.org/10.5281/zenodo.21926563) [![CI](https://github.com/DavidFox998/zerobeacon/actions/workflows/main.yml/badge.svg)](https://github.com/DavidFox998/zerobeacon/actions/workflows/main.yml)
+[![smithery badge](https://smithery.ai/badge/davidjfox998/zerobeacon-1050)](https://smithery.ai/servers/davidjfox998/zerobeacon-1050) [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21926563.svg)](https://doi.org/10.5281/zenodo.21926563) [![CI](https://github.com/DavidFox998/zerobeacon/actions/workflows/main.yml/badge.svg)](https://github.com/DavidFox998/zerobeacon/actions/workflows/main.yml)
 
 # ZeroBeacon.ai — Collision-Anchored Commerce Router
 
-**1050 beacon-anchored tools** for agent commerce, legal sealing, and math research.  
+**1,052 MCP operations** for agent commerce, legal sealing, and math research.  
 Live API: `https://zerobeacon.ai`
 
 ---
