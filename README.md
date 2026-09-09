@@ -2,7 +2,7 @@
 
 # ZeroBeacon.ai — Collision-Anchored Commerce Router
 
-**1,052 MCP operations** for agent commerce, legal sealing, and math research.  
+**1,003 MCP operations** for agent commerce, legal sealing, and math research.  
 Live API: `https://zerobeacon.ai`
 
 ---
