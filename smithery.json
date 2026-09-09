@@ -1,34 +1,41 @@
 {
-  "name": "@davidjfox998/zerobeacon-1000",
-  "displayName": "ZeroBeacon.ai — Collision-Proof Commerce Router — 1000 Tools",
-  "description": "zerobeacon.ai — d=2303582338 — 1000 APIs: 300 market router + 400 math engine (Arakelov/RH/BSD/NS/Yang-Mills) + 300 amplum everyday tools — Live beacon 1d2c7a5b — FREE 100 tools no key — PRO $10/mo 400 tools — PRO+ $100/mo 800 tools — ENTERPRISE $1000 all 1000 tools",
+  "name": "@davidjfox998/zerobeacon-1050",
+  "displayName": "ZeroBeacon.ai — 1052 MCP Operations",
+  "description": "A broad MCP service for deterministic beacon checks, commerce workflow utilities, numerical research experiments, everyday transformations, and intent-based routing. The first 100 operations are available without a key. Mathematical endpoints are computational tools and do not constitute proofs of open conjectures.",
   "homepage": "https://zerobeacon.ai",
   "repository": "https://github.com/DavidFox998/zerobeacon",
-  "version": "1000.0.0",
+  "version": "1.1.0",
   "author": {
     "name": "DavidFox998",
     "url": "https://github.com/DavidFox998"
   },
   "tags": [
-    "beacon", "escrow", "notary", "mesh", "will", "intent", "memory",
-    "amplum", "boring", "arakelov", "sieve", "120standard", "agent-trust",
-    "1000-tools", "largest-mcp", "verifiable-randomness", "moat",
-    "d2303582338", "beacon-1d2c7a5b", "commerce", "paypal", "stripe"
+    "mcp",
+    "api",
+    "commerce",
+    "utilities",
+    "numerical-research",
+    "agent-tools",
+    "deterministic-beacon"
   ],
   "startCommand": "uvicorn zerobeacon_mf_1000_main:app --host 0.0.0.0 --port 8000 --workers 1",
   "mcp": {
     "endpoint": "https://zerobeacon.ai/mcp",
     "transport": "http"
   },
-  "moat": {
-    "d": 2303582338,
-    "p1": 3000105001,
-    "p2": 5303687339,
-    "beacon": "1d2c7a5b",
-    "genesis": 82843,
-    "formula": "frac(p*pi/10*2^32)",
-    "collisions": 0,
-    "proofs": 4190000
+  "catalog": {
+    "operations": 1052,
+    "freeOperations": 100,
+    "groups": [
+      "Market Router",
+      "Math Engine",
+      "Amplum Everyday",
+      "Brain Router"
+    ]
   },
-  "architecture": "20x50 — 20 router files x 50 tools = 1000 tools"
+  "limitations": [
+    "Mathematical operations are numerical or experimental utilities, not proofs of open conjectures.",
+    "The beacon uses documented controlled anchors and is not collision-proof."
+  ],
+  "architecture": "21 router modules exposing 1,052 MCP operations"
 }
