@@ -16,4 +16,4 @@ RUN useradd -r -u 1001 appuser \
 # Stay as root so the entrypoint can chown the mounted volume.
 EXPOSE 8080
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
-CMD ["uvicorn", "zerobeacon_mf_1000_main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "zerobeacon_mf_1000_main:app", "--host", "0.0.0.0", "--port", "8080", "--no-access-log"]
