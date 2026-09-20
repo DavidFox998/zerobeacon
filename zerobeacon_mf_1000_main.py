@@ -1163,11 +1163,12 @@ def openapi_rapidapi_all():
 def well_known_mcp():
     return {
         "name": "@davidjfox998/zerobeacon-1050",
-        "version": "1050.0.0",
+        "version": "1003.1.1",
         "beacon": BEACON,
         "d": str(D),
         "genesis": GENESIS_P,
-        "tools": 1050,
+        "mcp_operations": 1003,
+        "rest_endpoints": 1052,
         "endpoints": {
             "mcp":    "https://zerobeacon.ai/mcp",
             "beacon": "https://beacon.zerobeacon.ai",
@@ -1183,30 +1184,27 @@ def well_known_mcp():
 
 @app.get("/.well-known/mcp/server-card.json")
 def well_known_mcp_server_card():
-    """Smithery static server card — bypasses auto-scan when MCP transport isn't
-    directly reachable. Declares 1050 tools so the marketplace badge is correct."""
+    """Static Smithery server card with measured MCP and REST counts."""
     return {
-        "name": "ZeroBeacon.ai — 1050 Tools",
+        "name": "ZeroBeacon.ai — 1,003 MCP Operations",
         "description": (
-            "1050 beacon-anchored MCP tools across 4 groups: "
-            "Market Router (tools 1–300), Math Engine (tools 301–700), "
-            "Amplum Everyday (tools 701–1000), and the Brain Router (tools 1001–1050). "
-            "FREE tier: first 100 tools, no API key required. "
-            "PRO / ENTERPRISE: pass X-API-Key header after Stripe checkout at https://zerobeacon.ai. "
-            "d=2303582338 · beacon=1d2c7a5b · ω²=48/13>0 verified"
+            "1,003 MCP operations across Market Router, Math Engine, Amplum Everyday, "
+            "and 3 Brain Router meta-operations. The service also exposes 1,052 REST endpoints. "
+            "The first 100 MCP operations require no API key. "
+            "PRO / ENTERPRISE access uses an X-API-Key obtained after Stripe checkout at https://zerobeacon.ai. "
+            "Mathematical operations are computational research utilities, not proofs of open conjectures. "
+            "d=2303582338 · beacon=1d2c7a5b"
         ),
         "url": "https://zerobeacon.ai/mcp",
-        "version": "1050.0.0",
-        "tools": {
-            "count": 1050,
-        },
+        "version": "1003.1.1",
+        "tools": {"count": 1003},
+        "rest_endpoints": 1052,
         "authentication": {
             "type": "api_key",
             "header": "X-API-Key",
-            "description": "API key starting with zbk_. Get one at https://zerobeacon.ai after Stripe checkout.",
+            "description": "Optional for the first 100 MCP operations; paid operations use a zbk_ API key from https://zerobeacon.ai.",
         },
     }
-
 
 @app.get("/privacy", response_class=HTMLResponse)
 async def privacy_policy():
