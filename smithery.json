@@ -4,7 +4,7 @@
   "description": "A broad MCP service for deterministic beacon checks, commerce workflow utilities, numerical research experiments, everyday transformations, and intent-based routing. The first 100 operations are available without a key. Mathematical endpoints are computational tools and do not constitute proofs of open conjectures.",
   "homepage": "https://zerobeacon.ai",
   "repository": "https://github.com/DavidFox998/zerobeacon",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "author": {
     "name": "DavidFox998",
     "url": "https://github.com/DavidFox998"
@@ -24,18 +24,19 @@
     "transport": "http"
   },
   "catalog": {
-    "operations": 1052,
+    "operations": 1003,
     "freeOperations": 100,
     "groups": [
       "Market Router",
       "Math Engine",
       "Amplum Everyday",
       "Brain Router"
-    ]
+    ],
+    "restEndpoints": 1052
   },
   "limitations": [
     "Mathematical operations are numerical or experimental utilities, not proofs of open conjectures.",
     "The beacon uses documented controlled anchors and is not collision-proof."
   ],
-  "architecture": "21 router modules exposing 1,003 MCP operations"
+  "architecture": "20 router modules expose 1,000 MCP operations plus 3 Brain Router MCP meta-operations; 1,052 REST endpoints remain available"
 }
