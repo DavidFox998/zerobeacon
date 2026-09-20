@@ -43,11 +43,33 @@ Nine primes are known to collide with the anchor value `1d2c7a5b`:
 | **Market Router** — payment, escrow, delivery, budget, notary | 1–300 | FREE (first 100) / PRO | $0 / $10 |
 | **Math Engine** — Arakelov, RH, BSD, Navier-Stokes, Yang-Mills, P vs NP | 301–700 | PRO | $100 |
 | **Amplum Everyday** — scheduling, memory, legal, will, mesh treasury | 701–1000 | PRO | $100 |
-| **Brain Router** — 1 brain that routes all 1000 tools, chain, think, swarm | 1001–1050 | ENTERPRISE | $1000 |
+| **Brain Router** — 3 MCP meta-tools wrapping 50 brain-routing endpoints | 1001–1003 MCP | ENTERPRISE | $1000 |
 
 **FREE tier:** first 100 tools, no API key required.  
 **PRO / ENTERPRISE:** pass `X-API-Key: zbk_…` header.  
 Get a key at https://zerobeacon.ai after Stripe checkout.
+
+---
+
+## Install from Smithery
+
+Install the current Smithery CLI (Node.js 20+), connect ZeroBeacon, and inspect the live tool catalog:
+
+```bash
+npm install -g smithery@latest
+smithery auth login
+smithery mcp add https://zerobeacon.ai/mcp --id zerobeacon
+smithery tool list zerobeacon
+```
+
+To add the remote server directly to a supported local client, use:
+
+```bash
+smithery mcp add https://zerobeacon.ai/mcp --client claude
+# Replace claude with another supported client name when needed.
+```
+
+Smithery listing: https://smithery.ai/servers/davidjfox998/zerobeacon-1050
 
 ---
 
