@@ -767,7 +767,7 @@ async def landing():
   <h1>ZERO<span>BEACON</span>.AI</h1>
   <p class="tagline">
     <b>Collision-anchored commerce router for AI agents.</b><br>
-    1050 tools &nbsp;·&nbsp; 21 blocks &nbsp;·&nbsp; 9 controlled collisions &nbsp;·&nbsp; ω²=48/13&gt;0 verified
+    1050 tools &nbsp;·&nbsp; 21 blocks &nbsp;·&nbsp; 9 controlled collisions &nbsp;·&nbsp; every delivery proven
   </p>
 
   <div class="beacon-box">{{
@@ -842,7 +842,7 @@ async def landing():
 
   <p class="moat">
     beacon={BEACON} &nbsp;·&nbsp; genesis={GENESIS_P} &nbsp;·&nbsp; d={D} &nbsp;·&nbsp;
-    ω²=48/13=3.6923… &gt;0 on X₀(143) — Lean4 verified
+    collision-anchored addressing — every tool at a precise address
   </p>
 
 </body></html>
