@@ -709,45 +709,59 @@ async def landing():
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZeroBeacon.ai — 1000 Tools — d=2303582338</title>
-<meta name="description" content="Collision-proof commerce router for AI agents. beacon:1d2c7a5b d:2303582338 tools:1000">
+<title>ZeroBeacon.ai — The right call is the only callable call</title>
+<meta name="description" content="ZeroBeacon is a collision-anchored MCP tool server for Alexa+ commerce: 1,052 tools at precise addresses, every order provable end to end. Built for Amazon Build-Ship-Shape. Free tier live — no key needed.">
 <style>
   *{{box-sizing:border-box;margin:0;padding:0}}
-  body{{background:#070709;color:#EAEAEA;font-family:monospace;padding:40px 20px;max-width:900px;margin:0 auto}}
+  body{{background:#070709;color:#EAEAEA;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:48px 20px;max-width:920px;margin:0 auto}}
 
   .live{{display:inline-block;border:1px solid #00FFD1;padding:5px 14px;border-radius:20px;
-         color:#00FFD1;font-size:.8rem;letter-spacing:.06em;margin-bottom:28px}}
+         color:#00FFD1;font-size:.8rem;letter-spacing:.06em;margin-bottom:28px;font-family:monospace}}
   .live::before{{content:"● ";animation:blink 1.4s infinite}}
   @keyframes blink{{0%,100%{{opacity:1}}50%{{opacity:.3}}}}
 
   h1{{font-size:clamp(2.6rem,8vw,5rem);font-weight:900;letter-spacing:-.02em;
-      line-height:1;margin-bottom:12px}}
+      line-height:1;margin-bottom:16px;font-family:monospace}}
   h1 span{{color:#00FFD1}}
-  .tagline{{color:#888;font-size:.95rem;margin-bottom:32px;line-height:1.6}}
-  .tagline b{{color:#EAEAEA}}
+  .tagline{{color:#9a9aad;font-size:1.12rem;margin-bottom:14px;line-height:1.55}}
+  .tagline b{{color:#EAEAEA;font-size:1.3rem;display:block;margin-bottom:8px;line-height:1.35}}
+  .stats{{color:#666;font-size:.9rem;margin-bottom:36px;font-family:monospace}}
 
   .beacon-box{{background:#0F0F12;border:1px solid #00FFD1;border-radius:12px;
-               padding:20px 24px;margin-bottom:32px;color:#00FFD1;
-               white-space:pre-wrap;font-size:.88rem;line-height:1.7;text-align:left}}
+               padding:20px 24px;margin-bottom:24px;color:#00FFD1;font-family:monospace;
+               white-space:pre-wrap;font-size:.86rem;line-height:1.7;text-align:left}}
 
   .box{{background:#0D0D10;border:1px solid #1e1e28;border-radius:14px;
-        padding:24px;margin-bottom:24px}}
-  .box-title{{color:#00FFD1;font-size:.75rem;letter-spacing:.1em;
+        padding:26px;margin-bottom:24px;line-height:1.65}}
+  .box p{{color:#b9b9c7;margin-bottom:12px}}
+  .box p:last-child{{margin-bottom:0}}
+  .box-title{{color:#00FFD1;font-size:.75rem;letter-spacing:.1em;font-family:monospace;
               text-transform:uppercase;margin-bottom:14px}}
+  .contest{{border-color:#00FFD1;background:#0a1210}}
 
-  .gate-info{{font-size:.85rem;line-height:1.8;color:#aab;text-align:left}}
+  .steps{{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}}
+  .step{{background:#111116;border:1px solid #222;border-radius:10px;padding:16px}}
+  .step .n{{color:#00FFD1;font-family:monospace;font-size:.75rem;letter-spacing:.08em}}
+  .step .t{{font-family:monospace;font-weight:700;margin:6px 0;font-size:.95rem}}
+  .step .d{{color:#888;font-size:.85rem;line-height:1.55}}
+
+  .snippet{{background:#0a0a0e;border:1px solid #1e1e28;border-radius:10px;padding:16px 18px;
+            font-family:monospace;font-size:.85rem;line-height:1.6;color:#c9f7ee;
+            white-space:pre-wrap;margin-bottom:12px}}
+
+  .gate-info{{font-size:.9rem;line-height:1.8;color:#aab;text-align:left}}
   .gate-info code{{background:#1a1a24;padding:2px 7px;border-radius:4px;
-                   color:#00FFD1;font-size:.82rem}}
+                   color:#00FFD1;font-size:.85rem;font-family:monospace}}
 
   .tiers{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:8px}}
   .tier{{background:#111116;border:1px solid #222;border-radius:10px;padding:14px;text-align:left}}
-  .tier .name{{color:#00FFD1;font-size:.8rem;font-weight:700;letter-spacing:.05em}}
+  .tier .name{{color:#00FFD1;font-size:.8rem;font-weight:700;letter-spacing:.05em;font-family:monospace}}
   .tier .price{{font-size:1.1rem;font-weight:700;margin:4px 0}}
-  .tier .tools{{color:#666;font-size:.78rem}}
+  .tier .tools{{color:#666;font-size:.8rem}}
 
   .links{{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}}
   .links a{{color:#00FFD1;text-decoration:none;border:1px solid #1e3a34;
-            padding:6px 13px;border-radius:6px;font-size:.82rem;
+            padding:7px 14px;border-radius:6px;font-size:.85rem;
             transition:border-color .15s,background .15s}}
   .links a:hover{{border-color:#00FFD1;background:#0a1f1c}}
   .links a.paypal{{color:#0ea5e9;border-color:#0c2a35}}
@@ -757,23 +771,88 @@ async def landing():
   .links a.rapidapi{{color:#f59e0b;border-color:#2d2010}}
   .links a.rapidapi:hover{{border-color:#f59e0b;background:#1a1005}}
 
-  .moat{{color:#333;font-size:.72rem;margin-top:32px;line-height:1.8;text-align:center}}
+  .moat{{color:#444;font-size:.75rem;margin-top:32px;line-height:1.8;text-align:center;font-family:monospace}}
 </style>
 </head><body>
 
-  <div class="live">BEACON LIVE &nbsp;·&nbsp; {BEACON} &nbsp;·&nbsp; d={D}</div>
+  <div class="live">BEACON LIVE &nbsp;·&nbsp; MCP TOOL SERVER &nbsp;·&nbsp; {BEACON}</div>
 
   <h1>ZERO<span>BEACON</span>.AI</h1>
   <p class="tagline">
-    <b>Collision-anchored commerce router for AI agents.</b><br>
-    1050 tools &nbsp;·&nbsp; 21 blocks &nbsp;·&nbsp; 9 controlled collisions &nbsp;·&nbsp; every delivery proven
+    <b>If you run commerce on Alexa+, you cannot afford a misrouted tool call.</b>
+    ZeroBeacon makes the right call the only callable call — 1,052 tools at precise
+    addresses, so an agent can never call the right tool name at the wrong address.
   </p>
+  <p class="stats">1052 tools &nbsp;·&nbsp; 21 blocks &nbsp;·&nbsp; 9 controlled collisions &nbsp;·&nbsp; every delivery proven</p>
+
+  <div class="box contest">
+    <div class="box-title">Built for Amazon Build-Ship-Shape · Alexa+ track</div>
+    <p>ZeroBeacon was built and launched publicly for this contest. The demo is one
+    order's full life — checkout, delivery proof, dispute — with every step verifiable
+    afterwards. No slides about a server: the server is live, and the free tier
+    answers with no key.</p>
+    <div class="links">
+      <a href="https://github.com/DavidFox998/zerobeacon" target="_blank" rel="noopener">GitHub — the code</a>
+      <a href="https://smithery.ai/servers/davidjfox998/zerobeacon-1050" target="_blank" rel="noopener">Smithery listing</a>
+      <a href="/llms.txt">llms.txt — for agents</a>
+      <a href="/docs">API docs</a>
+    </div>
+  </div>
+
+  <div class="box">
+    <div class="box-title">The problem: tool names collide</div>
+    <p>Most tool servers host about a dozen tools, so names never collide. At a
+    thousand tools they do — the same name lives in block after block. An agent
+    that calls a <i>name</i> instead of an <i>address</i> can check out the wrong
+    cart, the wrong size, the wrong color, at the wrong tier — and never know.</p>
+    <p>ZeroBeacon anchors every tool to a block address. The name picks the job;
+    the address picks the exact tool, tier, and variant. A retried call counts
+    once. And every claim a tool makes can be checked later against the record.</p>
+  </div>
+
+  <div class="box">
+    <div class="box-title">One order. Three calls. All provable.</div>
+    <div class="steps">
+      <div class="step">
+        <div class="n">STEP 1 — CHECKOUT</div>
+        <div class="t">cart_checkout</div>
+        <div class="d">Settles the order at its block address — the right cart, size, color, and tier, because no other call is callable at that address.</div>
+      </div>
+      <div class="step">
+        <div class="n">STEP 2 — DELIVERY</div>
+        <div class="t">delivery_final_proof</div>
+        <div class="d">The delivery is not a status claim. It is a proof, anchored to the same address chain as the order it fulfils.</div>
+      </div>
+      <div class="step">
+        <div class="n">STEP 3 — DISPUTE</div>
+        <div class="t">dispute_resolve</div>
+        <div class="d">When something is contested, the recorded evidence settles it — the same chain, read back. Commerce you can verify, and track, end to end.</div>
+      </div>
+    </div>
+    <p style="margin-top:14px">The same proof chain that settles a disputed order also notarizes a will
+    and trust documents. Verification is not a commerce feature here; it is the
+    foundation the commerce runs on.</p>
+  </div>
+
+  <div class="box">
+    <div class="box-title">Connect in one minute</div>
+    <div class="snippet">{{
+  "mcpServers": {{
+    "zerobeacon": {{
+      "url": "https://zerobeacon.ai/mcp"
+    }}
+  }}
+}}</div>
+    <p>Point any MCP client at <code>https://zerobeacon.ai/mcp</code>. The first 100
+    tools answer with no key. Paid tiers unlock by API key — delivered by email
+    after checkout, and shown on the success page.</p>
+  </div>
 
   <div class="beacon-box">{{
   "beacon":  "{BEACON}",
   "d":        {D},
   "genesis":  {GENESIS_P},
-  "tools":    1000,
+  "tools":    1052,
   "status":  "LIVE",
   "ts":       {int(_t.time())},
   "paypal":   "https://paypal.me/davidfox223",
@@ -828,6 +907,14 @@ async def landing():
     </div>
   </div>
 
+  <div class="box">
+    <div class="box-title">Honest status</div>
+    <p>ZeroBeacon is new and independent, launched publicly for this contest. It
+    has no customers yet — so no testimonials, no logos, no inflated numbers.
+    What it has is a live server, public code, a Smithery listing, and a free
+    tier you can call right now. Judge it by calling it.</p>
+  </div>
+
 {_resend_store_warning}{_resend_key_warning}  <div class="links">
     <a href="https://beacon.zerobeacon.ai">beacon.zerobeacon.ai</a>
     <a href="https://api.zerobeacon.ai">api.zerobeacon.ai</a>
@@ -847,6 +934,7 @@ async def landing():
   </p>
 
 </body></html>
+
 """
 
 
@@ -864,6 +952,13 @@ async def llms_txt():
             "Full tool index: https://zerobeacon.ai/docs\n"
         )
     return Response(content=text, media_type="text/plain; charset=utf-8")
+
+
+@app.get("/upgrade", include_in_schema=False)
+async def upgrade():
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse(url="/", status_code=307)
 
 
 # ── Core endpoints ────────────────────────────────────────────────────────────
