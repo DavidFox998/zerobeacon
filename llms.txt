@@ -1,0 +1,90 @@
+# ZeroBeacon
+
+> Collision-anchored commerce router for AI agents. Over 1,000 tools live at
+> precise block addresses, so an agent can never call the right tool name at
+> the wrong address. Tool names repeat across blocks by design; the block in
+> the address is what disambiguates them, and choosing the block chooses the
+> tier and variant. Every commerce call can be proven afterwards: checkout,
+> delivery proof, and dispute resolution form one verifiable chain.
+
+ZeroBeacon is a toolchest, not a single-purpose API. Most MCP servers host
+about a dozen tools; ZeroBeacon hosts over 1,000, organized in 21 blocks.
+At that scale, addressing is the engineering problem — and it is the one
+ZeroBeacon is built to solve.
+
+## Key facts
+
+- Base URL: https://zerobeacon.ai
+- MCP endpoint: POST https://zerobeacon.ai/mcp
+- OpenAPI spec: https://zerobeacon.ai/openapi.json
+- Interactive docs: https://zerobeacon.ai/docs
+- Health: https://zerobeacon.ai/health
+- Addressing: every tool is called at /api/{block}/{nn}/{tool}
+  (for example /api/mf/04_050/b3a_commerce/cart_checkout)
+- Measured October 2026: 1,003 callable paths, 699 distinct tool names,
+  296 names that exist in more than one block and are disambiguated by
+  the block address. 9 collisions are controlled at the core.
+
+## Access tiers
+
+- FREE: 100 tools, no API key required
+- PRO ($10/mo): 400 tools, API key
+- PRO+ ($100/mo): 800 tools, API key
+- ENTERPRISE ($1,000 one-time): all 1,000+ tools, API key
+
+Checkout is via Stripe or PayPal links on https://zerobeacon.ai. Paid keys
+are delivered by email automatically after checkout. The same toolset is
+also distributed through RapidAPI and Smithery.
+
+## The 21 blocks
+
+- mf/01 Trust: beacon core, hashing, randomness, ids, locks, receipts
+- mf/02 Verifiable computation: cellular automata, sieves, hashes, zero-knowledge proofs
+- mf/03 Money and billing: payments, Stripe, billing, invoicing
+- mf/04 Commerce: stores, products, carts, checkout, delivery proof, disputes
+- mf/05 Sovereign documents: wills, trusts, notary, guardianship, affidavits
+- mf/06 Mesh and consensus: leader election, quorum, coordination, time capsules
+- mf/07 Academy: courses, lessons, quizzes, certificates
+- mf/08 Atlas: geography, maps, geofences, weather
+- mf/09 Observatory: images, OCR, astronomy, media analysis
+- mf/10 Vault and proofs: Merkle trees, signatures, credentials, registries
+- mf/11 Signals and oracles: price feeds, prediction markets, sports
+- mf/12 Chain and ledger: EVM, blocks, proofs, sharding
+- mf/13 Infer: LLM inference, embeddings, routing
+- mf/14 Forge: combinatorics, graphs, scheduling, games
+- mf/15 Amplify: business, marketing, SEO, sales
+- mf/16 Omega core: core mathematics primitives
+- mf/17 Deep: extended mathematics tools
+- mf/18 Omega proofs: proof-oriented endpoints
+- mf/19 Education: kids' learning games
+- mf/20 Creative: music analysis and art tools
+- mf/21 Cosmic: 143-based constants and research tools
+
+## Start here: the commerce chain
+
+One order, three calls, all provable:
+
+1. cart_checkout (mf/04) — settle the order
+2. delivery_final_proof (mf/04) — prove the delivery
+3. dispute_resolve (mf/04) — settle a dispute against the recorded evidence
+
+The same proof chain that settles a disputed order also notarizes a will
+and trust documents in mf/05. Commerce you can verify, and track,
+end to end.
+
+## Coordination tools (for fleets and warehouses)
+
+- leader_elect (mf/06) — a zone elects its own leader if a central server drops
+- lock_lease (mf/01) — claim a resource for a fixed time; the lease expires itself
+- idempotency_key (mf/01) — retry a call any number of times; it counts once
+- timeproof (mf/01) — a verifiable timestamp for an event
+- audit_log (mf/01) — the record every claim is checked against later
+
+## Notes for agents
+
+- Always call a tool by its full block address, never by bare name: the
+  same name in two blocks is two different tools, possibly at different
+  tiers.
+- Name-only and unanchored legacy paths are not the canonical interface.
+- FREE tier tools answer without a key; paid tiers authenticate with the
+  API key issued at checkout.
