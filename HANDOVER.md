@@ -99,9 +99,10 @@ depends on it.
   embedded pricing table and by a generic payment link embedded in
   every tool description. The landing now links the three payment
   links directly; tool descriptions and tier errors point at
-  https://zerobeacon.ai/pricing. Archiving the Amplum products/prices
-  and the old payment link is the final step, after the new path
-  verifies live.
+  https://zerobeacon.ai/pricing. The Amplum products/prices and the
+  old payment link were archived (deactivated) 2026-10-18 after the
+  new path verified live. The orphaned Stripe pricing-table object
+  still exists in the dashboard but is embedded nowhere.
 - **Webhook amount mapping was threshold-based and wrong for B:**
   `>= 1000 → enterprise` would have filed a $199 payment as PRO+.
   Fixed to `>= 199 → enterprise_1000` in both handlers
@@ -141,8 +142,7 @@ depends on it.
    his exact confirmation at execution time.
 6. Stripe reconciled to Option B 2026-10-18 (see Money flow): new
    $10/$100/$199 catalog live, webhook threshold fixed, site and code
-   swept. Remaining: archive the Amplum products/prices + old payment
-   link once the new path verifies in production.
+   swept, Amplum catalog and old payment link archived.
 
 ## Operating rules
 
