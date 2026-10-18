@@ -1,0 +1,113 @@
+# ZeroBeacon — Operations Handover
+
+*Reconstructed 2026-10-18 by Talitha from the production codebase, the
+October 6 tool scan, and the founder's architecture notes. The original
+builder agent is gone and took its context with it; this document is the
+replacement for that lost knowledge. Keep it current — an agent that
+cannot read this file should not deploy.*
+
+## What ZeroBeacon is
+
+A collision-anchored commerce router for AI agents: 1,000+ MCP/REST tools
+in 21 blocks, sold in tiers, live at https://zerobeacon.ai. Tool names
+repeat across blocks by design; the block-anchored address
+`/api/{block}/{nn}/{tool}` disambiguates them and selects the tier/variant.
+October 2026 measurement: 1,003 callable paths, 699 distinct names, 296
+colliding names, 9 controlled collisions at the core.
+
+## Production topology (Fly.io, org `david-fox-287`)
+
+- **App `zerobeacon-mf-1000`** — production. Region sjc, one machine,
+  Dockerfile build, internal port 8080, autostop off, min 1 running.
+- **Volume `zerobeacon_data`** (1 GB, sjc) mounted at `/app/data`. Holds
+  `api_keys.json`, `api_sessions.json`, `resend_attempts.json`. This
+  volume is the business: customer keys live here, not in the image.
+- **App `zerobeacon`** — LEGACY v49.1 (51 tools), no volume. Its machine
+  was stopped 2026-10-18 as part of the takeover cleanup. Do not revive
+  it without a reason; do not destroy it without the founder's word.
+- Fly.io operations run through the `custom.flyio` connector (org token;
+  the founder holds it in Muse's secure storage). Inventory commands:
+  `flyapi.py verify | machines <app> | volumes <app> | stop <app> <id>`.
+
+## Repository map (github.com/DavidFox998/zerobeacon, branch main)
+
+- `zerobeacon_mf_1000_main.py` — the production app (~2,440 lines):
+  FastAPI factory, tier gating, MCP Streamable HTTP at `POST /mcp`,
+  landing page template (starts ~line 708), Stripe webhook, admin.
+  `zerobeacon_mf_300_main.py` / `_600_` are the smaller tier variants.
+- `routers/` — one router per 50-tool slice, named
+  `zerobeacon_mf_{NN}_050_{block}_{family}.py` (trust, billing, commerce,
+  sovereign, will, mesh, sieve, boring, amplum, arakelov, ...).
+  `generate_routers.py` generates them.
+- `core/` — `beacon.py` (the address generator), `keystore.py` (key
+  issuance/lookup against the volume), `auth.py`, `tier_guard.py`,
+  `emailer.py` (Resend), `rapidapi_auth.py`, `log_redactor.py`.
+- Config/specs: `fly.toml`, `Dockerfile`, `openapi-commerce.yaml`,
+  `openapi-math.yaml`, `openapi-amplum.yaml`, `smithery.yaml`,
+  `smithery.json`, `mcp.json`, `tool_schemas.py`, `MARKETING.md`,
+  `rapidapi_guide.md`.
+- Tests at repo root (`test_*.py`): tier gates, Stripe webhook, Resend
+  email/TTL/persistence, RapidAPI gates, smoke tests. CI runs the
+  tier-gate + Stripe subset as the deploy gate.
+
+## Deploy pipeline
+
+- `.github/workflows/main.yml`: push to `main` → tier-gate/Stripe tests →
+  deploy to Fly.io. **A push to main is a production deploy.** There is
+  no staging. Land changes in reviewed batches, never casually.
+- `uptime-check.yml` runs every ~15 minutes against zerobeacon.ai.
+- Known gap: GitHub's copy may lag the Replit workspace (unpushed Repl
+  changes were never confirmed either way). A Repl zip export is the only
+  full reconciliation; until then, treat this repo as production truth
+  but flag drift when behavior disagrees with code.
+
+## Secrets (names only — values live in Fly secrets / secure storage)
+
+`STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`, `RAPIDAPI_PROXY_SECRET`,
+`SHOPIFY_WEBHOOK_SECRET`, `SESSION_SECRET`, `ADMIN_SECRET`,
+`ALERT_WEBHOOK_URL`, `EMAIL_FROM`, `FLY_APP_NAME`, plus Resend/RapidAPI
+check-interval and test-recipient settings. The landing page shows a
+warning banner when `RESEND_API_KEY` is invalid — key-delivery email
+depends on it.
+
+## Money flow
+
+- Landing page embeds a Stripe pricing table (js.stripe.com) and PayPal
+  links. Tiers: FREE $0 (100 tools, no key), PRO $10/mo (400),
+  PRO+ $100/mo (800), ENTERPRISE $1,000 one-time (all).
+- Stripe webhook → keystore writes the key to the volume → Resend emails
+  the key to the buyer. If keys stop arriving: check the webhook secret,
+  the keystore write, and the Resend key, in that order.
+- RapidAPI distribution authenticates through `RAPIDAPI_PROXY_SECRET`;
+  Smithery metadata lives in `smithery.yaml` / `smithery.json`.
+
+## Known issues / cleanup ledger
+
+1. `/llms.txt` returns 404. A draft now sits at repo root (`llms.txt`);
+   it needs a route in the main app (plain-text response) and a deploy.
+2. Landing page stats row (main file ~line 770) and footer (~line 845)
+   still show `ω²=48/13>0 verified` / `on X₀(143) — Lean4 verified`.
+   Founder's verdict on the page (2026-10-11): "looks like a weird math
+   draft." Plain-language replacement is a pending reviewed batch.
+3. A raw-JSON stats block renders on a secondary page (main file
+   ~line 2271, `<pre id="out">`). Pending the same batch.
+4. Legacy app `zerobeacon` (v49.1) — machine stopped 2026-10-18;
+   destroy decision pending.
+5. RapidAPI listings: founder's standing plan is delete-all-and-recreate
+   once RapidAPI access is connected. Not yet done; destructive, needs
+   his exact confirmation at execution time.
+6. Stripe: not yet inventoried from the Stripe side (products, prices,
+   webhook health). Connector setup is next after Fly.io.
+
+## Operating rules
+
+- Read-first on money surfaces (Stripe, PayPal, RapidAPI billing).
+- Destructive actions (listing deletes, app destroys, volume changes)
+  only on the founder's exact confirmation.
+- Nothing from the founder's private patent notes goes into public copy.
+  Public claims must trace to the live site, this repo, or the public
+  evidence packet.
+- The Amazon Build-Ship-Shape entry (deadline Oct 23, 2026) demos the
+  commerce trio `cart_checkout` → `delivery_final_proof` →
+  `dispute_resolve`. Keep those endpoints healthy above all else this
+  week.
