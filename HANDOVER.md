@@ -81,6 +81,26 @@ depends on it.
 - RapidAPI distribution authenticates through `RAPIDAPI_PROXY_SECRET`;
   Smithery metadata lives in `smithery.yaml` / `smithery.json`.
 
+### Stripe inventory (read 2026-10-18 via the Stripe connector, account "Entangled Technologies", live)
+
+- Products/prices on Stripe do NOT match the site. Stripe holds an older
+  "Amplum" lineup, all monthly: Amplum Positivity API $9/mo, Amplum Pro
+  $49/mo, Amplum Enterprise $199/mo. The site advertises PRO $10/mo,
+  PRO+ $100/mo, ENTERPRISE $1,000 one-time — none of those prices exist
+  in Stripe. Which price a buyer actually gets depends on the pricing
+  table object; reconciling the catalog to the site is a pending
+  founder decision (money-side write).
+- Webhook: exactly one endpoint, enabled, at
+  `https://zerobeacon-mf-1000.fly.dev/webhook` (the fly.dev hostname,
+  not zerobeacon.ai — functional, but note it).
+- Subscriptions: 0. Charges: 0. Balance: $0. Stripe has never processed
+  a zerobeacon payment; there is no revenue history to disturb.
+- Access: Muse's Stripe connector (OAuth sign-in) is the working route.
+  The founder also holds an API key; a vault copy was attempted
+  2026-10-18 (form was buggy) — the key remains retrievable from his
+  dashboard if ever needed. His dashboard 2FA still points at a dead
+  phone number; recovery via Stripe support + photo ID is pending him.
+
 ## Known issues / cleanup ledger
 
 1. `/llms.txt` — RESOLVED 2026-10-18. The file sits at repo root and a
@@ -102,8 +122,9 @@ depends on it.
 5. RapidAPI listings: founder's standing plan is delete-all-and-recreate
    once RapidAPI access is connected. Not yet done; destructive, needs
    his exact confirmation at execution time.
-6. Stripe: not yet inventoried from the Stripe side (products, prices,
-   webhook health). Connector setup is next after Fly.io.
+6. Stripe inventoried 2026-10-18 (see Money flow): catalog is stale
+   ("Amplum" $9/$49/$199/mo vs the site's $10/$100/$1,000), zero
+   charges/subscriptions ever. Reconciliation decision pending.
 
 ## Operating rules
 
