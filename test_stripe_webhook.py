@@ -225,6 +225,25 @@ class TestStripeWebhook:
         assert call_kwargs["email"] == "big@example.com"
         assert call_kwargs["tier"] == "enterprise_1000"
 
+    # 5b. checkout $199 → enterprise_1000 (Option B ladder, 2026-10-18) ------
+
+    def test_checkout_199_dollars_issues_enterprise_key(self):
+        """$199 checkout → tier enterprise_1000, key issued, email sent."""
+        event = _make_checkout_event(19900, email="ent199@example.com",
+                                     session_id="cs_test_199")
+        with patch.dict(os.environ, {"STRIPE_WEBHOOK_SECRET": FAKE_SECRET}):
+            resp, mock_email = _post(event)
+
+        assert resp.status_code == 200
+        key = keystore.lookup_by_session("cs_test_199")
+        assert key is not None, "API key should have been issued for $199 checkout"
+        assert keystore.lookup(key)["tier"] == "enterprise_1000"
+
+        mock_email.assert_called_once()
+        call_kwargs = mock_email.call_args[1]
+        assert call_kwargs["email"] == "ent199@example.com"
+        assert call_kwargs["tier"] == "enterprise_1000"
+
     # 6. checkout $5 → free tier, no key issued -------------------------------
 
     def test_checkout_free_tier_amount_issues_no_key(self):

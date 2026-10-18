@@ -10,14 +10,14 @@ from fastapi import APIRouter
 
 router = APIRouter(prefix="/affiliate", tags=["Affiliate"])
 
-_STRIPE_CHECKOUT = "https://buy.stripe.com/eVq7sMdXk5d7chy941ebu01"
+_STRIPE_CHECKOUT = "https://zerobeacon.ai/pricing"
 _PAYPAL_LINK     = "https://paypal.me/davidfox223"
 _SITE            = "https://zerobeacon.ai"
 
 _PLANS = {
     "pro_10":         {"name": "PRO $10/mo",        "price_usd": 10,   "tools": 500},
     "pro_100":        {"name": "PRO $100/mo",        "price_usd": 100,  "tools": 800},
-    "enterprise_1000":{"name": "ENTERPRISE $1000/mo","price_usd": 1000, "tools": 1050},
+    "enterprise_1000":{"name": "ENTERPRISE $199/mo","price_usd": 1000, "tools": 1050},
 }
 
 

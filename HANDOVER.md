@@ -83,13 +83,30 @@ depends on it.
 
 ### Stripe inventory (read 2026-10-18 via the Stripe connector, account "Entangled Technologies", live)
 
-- Products/prices on Stripe do NOT match the site. Stripe holds an older
-  "Amplum" lineup, all monthly: Amplum Positivity API $9/mo, Amplum Pro
-  $49/mo, Amplum Enterprise $199/mo. The site advertises PRO $10/mo,
-  PRO+ $100/mo, ENTERPRISE $1,000 one-time — none of those prices exist
-  in Stripe. Which price a buyer actually gets depends on the pricing
-  table object; reconciling the catalog to the site is a pending
-  founder decision (money-side write).
+- **Pricing decision: Option B (founder, 2026-10-18) — all-monthly
+  ladder.** PRO $10/mo (400 tools) · PRO+ $100/mo (800) · ENTERPRISE
+  $199/mo (all 1,052). The old $1,000 one-time enterprise tier is
+  retired; the internal tier key `enterprise_1000` is unchanged (it is
+  an identifier baked into issued keys, not a price).
+- New Stripe catalog: products "ZeroBeacon PRO" / "ZeroBeacon PRO+" /
+  "ZeroBeacon ENTERPRISE" with monthly prices $10 / $100 / $199 and
+  per-tier payment links (buy.stripe.com), redirecting to
+  /success?session_id={CHECKOUT_SESSION_ID}. Products carry tax code
+  txcd_10102000 (Managed Payments requires it — link creation fails
+  without it).
+- The pre-B catalog was an older "Amplum" lineup (Positivity $9/mo,
+  Pro $49/mo, Enterprise $199/mo) referenced by the landing page's
+  embedded pricing table and by a generic payment link embedded in
+  every tool description. The landing now links the three payment
+  links directly; tool descriptions and tier errors point at
+  https://zerobeacon.ai/pricing. Archiving the Amplum products/prices
+  and the old payment link is the final step, after the new path
+  verifies live.
+- **Webhook amount mapping was threshold-based and wrong for B:**
+  `>= 1000 → enterprise` would have filed a $199 payment as PRO+.
+  Fixed to `>= 199 → enterprise_1000` in both handlers
+  (checkout.session.completed and customer.subscription.updated),
+  with a regression test at exactly $199 (test_stripe_webhook.py 5b).
 - Webhook: exactly one endpoint, enabled, at
   `https://zerobeacon-mf-1000.fly.dev/webhook` (the fly.dev hostname,
   not zerobeacon.ai — functional, but note it).
@@ -122,9 +139,10 @@ depends on it.
 5. RapidAPI listings: founder's standing plan is delete-all-and-recreate
    once RapidAPI access is connected. Not yet done; destructive, needs
    his exact confirmation at execution time.
-6. Stripe inventoried 2026-10-18 (see Money flow): catalog is stale
-   ("Amplum" $9/$49/$199/mo vs the site's $10/$100/$1,000), zero
-   charges/subscriptions ever. Reconciliation decision pending.
+6. Stripe reconciled to Option B 2026-10-18 (see Money flow): new
+   $10/$100/$199 catalog live, webhook threshold fixed, site and code
+   swept. Remaining: archive the Amplum products/prices + old payment
+   link once the new path verifies in production.
 
 ## Operating rules
 

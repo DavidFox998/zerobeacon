@@ -52,21 +52,21 @@ class TierAccessError(Exception):
             .replace("_", " ")
             .replace("pro 10",          "PRO ($10/mo)")
             .replace("pro 100",         "PRO+ ($100/mo)")
-            .replace("enterprise 1000", "ENTERPRISE ($1,000)")
+            .replace("enterprise 1000", "ENTERPRISE ($199/mo)")
         )
         if not self.key_present:
             return (
                 f"{tier_label} required — 100 tools free, 400 with PRO ($10/mo), "
-                "800 with PRO+ ($100/mo), 1052 with ENTERPRISE ($1,000).\n"
+                "800 with PRO+ ($100/mo), 1052 with ENTERPRISE ($199/mo).\n"
                 "Upgrade: https://zerobeacon.ai/upgrade\n"
-                "Stripe checkout: https://buy.stripe.com/eVq7sMdXk5d7chy941ebu01"
+                "Stripe checkout: https://zerobeacon.ai/pricing"
             )
         return (
             f"{tier_label} required — your key is tier '{self.caller_tier}'. "
             "100 tools free, 400 with PRO ($10/mo), 800 with PRO+ ($100/mo), "
-            "1052 with ENTERPRISE ($1,000).\n"
+            "1052 with ENTERPRISE ($199/mo).\n"
             "Upgrade: https://zerobeacon.ai/upgrade\n"
-            "Stripe checkout: https://buy.stripe.com/eVq7sMdXk5d7chy941ebu01"
+            "Stripe checkout: https://zerobeacon.ai/pricing"
         )
 
     def to_response_body(self) -> dict:
@@ -82,7 +82,7 @@ class TierAccessError(Exception):
             "tools_pro_plus":  800,
             "tools_enterprise": 1052,
             "upgrade":         "https://zerobeacon.ai/upgrade",
-            "stripe":          "https://buy.stripe.com/eVq7sMdXk5d7chy941ebu01",
+            "stripe":          "https://zerobeacon.ai/pricing",
             "rapidapi":        "https://rapidapi.com/davidjfox998/api/zerobeacon",
             "paypal":          "https://paypal.me/davidfox223",
         }

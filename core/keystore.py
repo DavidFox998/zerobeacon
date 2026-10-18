@@ -45,7 +45,7 @@ TIER_LABEL: dict[str, str] = {
     "free":             "FREE",
     "pro_10":           "PRO $10/month",
     "pro_100":          "PRO $100/month",
-    "enterprise_1000":  "ENTERPRISE $1000/research",
+    "enterprise_1000":  "ENTERPRISE $199/month",
 }
 
 # ---------------------------------------------------------------------------
