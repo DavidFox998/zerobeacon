@@ -137,6 +137,17 @@ depends on it.
    to show JSON.
 4. Legacy app `zerobeacon` (v49.1) — machine stopped 2026-10-18;
    destroy decision pending.
+7. Landing page REBUILT 2026-10-18 for the Amazon Build-Ship-Shape
+   entry (founder's order): hero carries the video's closing line
+   ("the right call is the only callable call"), a contest strip
+   (Alexa+ track, GitHub/Smithery/llms.txt links), the collision
+   problem in plain English, the demo trio as three steps, a
+   copy-paste MCP connect snippet, and an "Honest status" box — the
+   product has no customers yet and the page says so; proof offered
+   is the live server and the free tier, not testimonials. Sans body
+   type replaces the monospace wall (mono kept for code/beacon).
+   Also fixed: /upgrade returned 404 while tier-error messages point
+   there — it now redirects (307) to the landing page.
 5. RapidAPI listings: founder's standing plan is delete-all-and-recreate
    once RapidAPI access is connected. Not yet done; destructive, needs
    his exact confirmation at execution time.
