@@ -83,14 +83,20 @@ depends on it.
 
 ## Known issues / cleanup ledger
 
-1. `/llms.txt` returns 404. A draft now sits at repo root (`llms.txt`);
-   it needs a route in the main app (plain-text response) and a deploy.
-2. Landing page stats row (main file ~line 770) and footer (~line 845)
-   still show `ω²=48/13>0 verified` / `on X₀(143) — Lean4 verified`.
-   Founder's verdict on the page (2026-10-11): "looks like a weird math
-   draft." Plain-language replacement is a pending reviewed batch.
-3. A raw-JSON stats block renders on a secondary page (main file
-   ~line 2271, `<pre id="out">`). Pending the same batch.
+1. `/llms.txt` — RESOLVED 2026-10-18. The file sits at repo root and a
+   `/llms.txt` route in the main app serves it as plain text; verified
+   live (HTTP 200) after the CI deploy.
+2. Landing page stats row and footer — RESOLVED 2026-10-18. The
+   `ω²=48/13` segments were replaced with plain language ("every
+   delivery proven"; "collision-anchored addressing — every tool at a
+   precise address"). Founder's verdict on the page (2026-10-11):
+   "looks like a weird math draft." Note: the OpenAPI app description
+   still carries an ω² string — that is machine-facing metadata and was
+   left deliberately.
+3. Raw-JSON elements — reviewed 2026-10-18, not defects: the homepage
+   beacon box is a styled design element, and the `<pre id="out">`
+   block is the live output of the Brain demo page, which is supposed
+   to show JSON.
 4. Legacy app `zerobeacon` (v49.1) — machine stopped 2026-10-18;
    destroy decision pending.
 5. RapidAPI listings: founder's standing plan is delete-all-and-recreate
