@@ -849,6 +849,22 @@ async def landing():
 """
 
 
+@app.get("/llms.txt", include_in_schema=False)
+async def llms_txt():
+    from pathlib import Path
+
+    from fastapi.responses import Response
+
+    try:
+        text = (Path(__file__).parent / "llms.txt").read_text(encoding="utf-8")
+    except OSError:
+        text = (
+            "# ZeroBeacon\n\n> Collision-anchored commerce router for AI agents. "
+            "Full tool index: https://zerobeacon.ai/docs\n"
+        )
+    return Response(content=text, media_type="text/plain; charset=utf-8")
+
+
 # ── Core endpoints ────────────────────────────────────────────────────────────
 
 @app.get("/beacon")
