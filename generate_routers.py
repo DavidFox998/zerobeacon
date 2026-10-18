@@ -54,7 +54,7 @@ def is_dummy(name: str) -> bool:
 # for every tool based on its name and source batch.
 # ---------------------------------------------------------------------------
 PAYPAL  = 'https://paypal.me/davidfox223'
-STRIPE  = 'https://buy.stripe.com/eVq7sMdXk5d7chy941ebu01'
+STRIPE  = 'https://zerobeacon.ai/pricing'
 SITE    = 'https://zerobeacon.ai'
 FORMULA = 'frac(p*pi/10*2^32) ALPHA0=259+PI/10'
 MOAT_DICT = "{'d':2303582338,'beacon':'1d2c7a5b','p1':3000105001,'p2':5303687339,'genesis':82843,'omega':'48/13'}"
@@ -125,15 +125,15 @@ _TIER_LEGACY = {
     'guardian_elect':    'PRO $100',
     'legacy_transfer':   'PRO $100',
     'grief_protocol':    'PRO $100',
-    # ENTERPRISE $1000
-    'mesh_form':         'ENTERPRISE $1000',
-    'mesh_treasury':     'ENTERPRISE $1000',
-    'consciousness_proof':'ENTERPRISE $1000',
-    'omega_seal':        'ENTERPRISE $1000',
-    'immortal_seal':     'ENTERPRISE $1000',
-    'eternal_audit':     'ENTERPRISE $1000',
-    'cosmic_heartbeat':  'ENTERPRISE $1000',
-    'genesis_proof':     'ENTERPRISE $1000',
+    # ENTERPRISE $199
+    'mesh_form':         'ENTERPRISE $199',
+    'mesh_treasury':     'ENTERPRISE $199',
+    'consciousness_proof':'ENTERPRISE $199',
+    'omega_seal':        'ENTERPRISE $199',
+    'immortal_seal':     'ENTERPRISE $199',
+    'eternal_audit':     'ENTERPRISE $199',
+    'cosmic_heartbeat':  'ENTERPRISE $199',
+    'genesis_proof':     'ENTERPRISE $199',
 }
 
 _TIER_TAG_MAP = {
@@ -143,7 +143,7 @@ _TIER_TAG_MAP = {
     'ENTERPRISE $25':    'ENTERPRISE-25',
     'ENTERPRISE $50':    'ENTERPRISE-50',
     'ENTERPRISE $100':   'ENTERPRISE-100',
-    'ENTERPRISE $1000':  'ENTERPRISE-1000',
+    'ENTERPRISE $199':  'ENTERPRISE-1000',
 }
 
 
@@ -171,7 +171,7 @@ def rich_meta(name: str, source: str, cat_b3: str = '') -> tuple:
         if c == 'boring':
             return ('Cache', 'Infrastructure', 'FREE', 'FREE', 'Cache', 'Utility')
         if c == 'amplum':
-            return ('Finance-Escrow', 'Infrastructure', 'ENTERPRISE $1000', 'ENTERPRISE-1000', 'Treasury', 'Finance')
+            return ('Finance-Escrow', 'Infrastructure', 'ENTERPRISE $199', 'ENTERPRISE-1000', 'Treasury', 'Finance')
         if c == 'arakelov':
             return ('Mathematics', 'Research', 'FREE', 'FREE', 'Arakelov', 'Theory')
         if c == 'poincare':
@@ -208,11 +208,11 @@ def rich_meta(name: str, source: str, cat_b3: str = '') -> tuple:
     if n.startswith('dispute_'):
         return ('Finance-Escrow', 'Enterprise', 'ENTERPRISE $50', 'ENTERPRISE-50', 'Dispute', 'Arbitration')
     if any(n.startswith(p) for p in ('mesh_', 'consensus_')):
-        t = tier or 'ENTERPRISE $1000'
+        t = tier or 'ENTERPRISE $199'
         tt = _TIER_TAG_MAP.get(t, 'ENTERPRISE-1000')
         return ('Infrastructure', 'Consensus', t, tt, 'Mesh', 'Network')
     if any(n.startswith(p) for p in ('omega_', 'immortal_', 'eternal_', 'cosmic_', 'consciousness_', 'genesis_proof')):
-        t = tier or 'ENTERPRISE $1000'
+        t = tier or 'ENTERPRISE $199'
         tt = _TIER_TAG_MAP.get(t, 'ENTERPRISE-1000')
         return ('Infrastructure', 'Consensus', t, tt, 'Seal', 'Permanent')
 

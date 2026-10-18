@@ -30,7 +30,7 @@ ZeroBeacon is built to solve.
 - FREE: 100 tools, no API key required
 - PRO ($10/mo): 400 tools, API key
 - PRO+ ($100/mo): 800 tools, API key
-- ENTERPRISE ($1,000 one-time): all 1,000+ tools, API key
+- ENTERPRISE ($199/mo): all 1,052 tools, API key
 
 Checkout is via Stripe or PayPal links on https://zerobeacon.ai. Paid keys
 are delivered by email automatically after checkout. The same toolset is

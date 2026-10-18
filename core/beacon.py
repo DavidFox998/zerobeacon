@@ -87,8 +87,8 @@ TIERS = {
                    "time_lock", "guardian_elect", "legacy_transfer", "grief_protocol"],
     },
     "enterprise_1000": {
-        "price": "$1000/research",
-        "tools": 1000,
+        "price": "$199/month",
+        "tools": 1052,
         "paypal": PAYPAL_LINK_1000,
         "description": "Research grade — mesh, consciousness, omega, sieve, arakelov",
         "sample": ["mesh_form", "mesh_treasury", "consciousness_proof", "omega_seal",
@@ -98,8 +98,8 @@ TIERS = {
 
 PRICING_SUMMARY = (
     "FREE $0 100 tools | PRO $10/month 400 tools paypal.me/davidfox223/10 | "
-    "PRO $100/month 800 tools paypal.me/davidfox223/100 | "
-    "ENTERPRISE $1000/research 1000 tools paypal.me/davidfox223/1000"
+    "PRO+ $100/month 800 tools paypal.me/davidfox223/100 | "
+    "ENTERPRISE $199/month 1052 tools"
 )
 
 

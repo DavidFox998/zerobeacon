@@ -626,7 +626,7 @@ async def tier_gate(request: Request, call_next):
                 .replace("_", " ")
                 .replace("pro 10",          "PRO ($10/mo)")
                 .replace("pro 100",         "PRO+ ($100/mo)")
-                .replace("enterprise 1000", "ENTERPRISE ($1,000)")
+                .replace("enterprise 1000", "ENTERPRISE ($199/mo)")
             )
             # Conversion log — grep for TIER_BLOCK to count daily upgrade opportunities
             print(
@@ -637,17 +637,17 @@ async def tier_gate(request: Request, call_next):
             if not _key_present:
                 _msg = (
                     f"{_tier_label} required — 100 tools free, 400 with PRO ($10/mo), "
-                    "800 with PRO+ ($100/mo), 1052 with ENTERPRISE ($1,000).\n"
+                    "800 with PRO+ ($100/mo), 1052 with ENTERPRISE ($199/mo).\n"
                     "Upgrade: https://zerobeacon.ai/upgrade\n"
-                    "Stripe checkout: https://buy.stripe.com/eVq7sMdXk5d7chy941ebu01"
+                    "Stripe checkout: https://zerobeacon.ai/pricing"
                 )
             else:
                 _msg = (
                     f"{_tier_label} required — your key doesn't have this tier. "
                     "100 tools free, 400 with PRO ($10/mo), 800 with PRO+ ($100/mo), "
-                    "1052 with ENTERPRISE ($1,000).\n"
+                    "1052 with ENTERPRISE ($199/mo).\n"
                     "Upgrade: https://zerobeacon.ai/upgrade\n"
-                    "Stripe checkout: https://buy.stripe.com/eVq7sMdXk5d7chy941ebu01"
+                    "Stripe checkout: https://zerobeacon.ai/pricing"
                 )
             # HTTP 403 for REST routes. MCP denials are handled separately
             # in the /mcp handler using JSON-RPC error code -32001 (HTTP 200)
@@ -664,7 +664,7 @@ async def tier_gate(request: Request, call_next):
                     "tools_pro_plus":  800,
                     "tools_enterprise": 1052,
                     "upgrade":         "https://zerobeacon.ai/upgrade",
-                    "stripe":          "https://buy.stripe.com/eVq7sMdXk5d7chy941ebu01",
+                    "stripe":          "https://zerobeacon.ai/pricing",
                     "rapidapi":        "https://rapidapi.com/davidjfox998/api/zerobeacon",
                     "paypal":          "https://paypal.me/davidfox223",
                 },
@@ -711,7 +711,6 @@ async def landing():
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZeroBeacon.ai — 1000 Tools — d=2303582338</title>
 <meta name="description" content="Collision-proof commerce router for AI agents. beacon:1d2c7a5b d:2303582338 tools:1000">
-<script async src="https://js.stripe.com/v3/pricing-table.js"></script>
 <style>
   *{{box-sizing:border-box;margin:0;padding:0}}
   body{{background:#070709;color:#EAEAEA;font-family:monospace;padding:40px 20px;max-width:900px;margin:0 auto}}
@@ -778,7 +777,7 @@ async def landing():
   "status":  "LIVE",
   "ts":       {int(_t.time())},
   "paypal":   "https://paypal.me/davidfox223",
-  "stripe":   "https://buy.stripe.com/eVq7sMdXk5d7chy941ebu01",
+  "stripe":   "https://buy.stripe.com/eVq8wQg5sbBva9qa85ebu02",
   "rapidapi": "https://rapidapi.com/davidjfox998/api/zerobeacon",
   "site":     "https://zerobeacon.ai"
 }}</div>
@@ -803,18 +802,20 @@ async def landing():
       </div>
       <div class="tier">
         <div class="name">ENTERPRISE</div>
-        <div class="price">$1,000</div>
-        <div class="tools">All 1000 tools — research grade</div>
+        <div class="price">$199 / mo</div>
+        <div class="tools">All 1052 tools — research grade</div>
       </div>
     </div>
   </div>
 
   <div class="box">
     <div class="box-title">Subscribe via Stripe</div>
-    <stripe-pricing-table
-      pricing-table-id="prctbl_1U04FRIYX4ykfJS5WtHndstc"
-      publishable-key="pk_live_51TzsQQIYX4ykfJS5rsrhC5pzFer9Z8oZpFa86D4dpoF5Sa5K5TWdatS0fk0KGkTyvuk8oyQ3w0E7tFMdbxdpsJUG008veJSg5M">
-    </stripe-pricing-table>
+    <div class="links">
+      <a href="https://buy.stripe.com/eVq8wQg5sbBva9qa85ebu02" target="_blank" rel="noopener">PRO — $10/mo</a>
+      <a href="https://buy.stripe.com/5kQ4gA6uS20V81i5RPebu03" target="_blank" rel="noopener">PRO+ — $100/mo</a>
+      <a href="https://buy.stripe.com/7sY8wQ06ueNH5Tacgdebu04" target="_blank" rel="noopener">ENTERPRISE — $199/mo</a>
+    </div>
+    <p class="gate-info">Your API key is emailed after checkout and shown on the success page.</p>
   </div>
 
   <div class="box">
@@ -835,7 +836,7 @@ async def landing():
     <a href="/key/check">/key/check</a>
     <a href="/pricing">/pricing</a>
     <a href="https://paypal.me/davidfox223" class="paypal">PayPal — davidfox223</a>
-    <a href="https://buy.stripe.com/eVq7sMdXk5d7chy941ebu01" class="stripe">Stripe Checkout</a>
+    <a href="https://zerobeacon.ai/pricing" class="stripe">Stripe Checkout</a>
     <a href="https://rapidapi.com/davidjfox998/api/zerobeacon" class="rapidapi" target="_blank" rel="noopener">RapidAPI Marketplace</a>
     <a href="https://smithery.ai/servers/davidjfox998/zerobeacon-1050" target="_blank" rel="noopener" style="color:#a78bfa;border-color:#2d1f4a;">Smithery MCP</a>
   </div>
@@ -1122,7 +1123,7 @@ def openapi_rapidapi_enterprise():
         17, 20,
         "ZeroBeacon.ai — ENTERPRISE Tools (200)",
         (
-            "200 ENTERPRISE research-grade tools (MF-17–20, $1000): "
+            "200 ENTERPRISE research-grade tools (MF-17–20, $199/mo): "
             "mesh treasury, consciousness proof, omega seal, eternal audit, "
             "sieve, arakelov, and the full research suite. "
             "Requires ENTERPRISE X-API-Key from https://zerobeacon.ai. "
@@ -1193,7 +1194,7 @@ def well_known_mcp():
             "docs":   "https://zerobeacon.ai/docs",
         },
         "paypal": "https://paypal.me/davidfox223",
-        "stripe": "https://buy.stripe.com/eVq7sMdXk5d7chy941ebu01",
+        "stripe": "https://zerobeacon.ai/pricing",
         "site":   "https://zerobeacon.ai",
     }
 
@@ -1299,21 +1300,21 @@ def pricing():
                 "price": "$10/month",
                 "paypal": PAYPAL_LINK_10,
                 "api_key_required": True,
-                "stripe": "https://buy.stripe.com/eVq7sMdXk5d7chy941ebu01",
+                "stripe": "https://buy.stripe.com/eVq8wQg5sbBva9qa85ebu02",
             },
             "pro_100": {
                 "tools": 800,
                 "price": "$100/month",
                 "paypal": PAYPAL_LINK_100,
                 "api_key_required": True,
-                "stripe": "https://buy.stripe.com/eVq7sMdXk5d7chy941ebu01",
+                "stripe": "https://buy.stripe.com/5kQ4gA6uS20V81i5RPebu03",
             },
             "enterprise_1000": {
-                "tools": 1000,
-                "price": "$1000/research",
-                "paypal": PAYPAL_LINK_1000,
+                "tools": 1052,
+                "price": "$199/month",
+                "paypal": None,
                 "api_key_required": True,
-                "stripe": "https://buy.stripe.com/eVq7sMdXk5d7chy941ebu01",
+                "stripe": "https://buy.stripe.com/7sY8wQ06ueNH5Tacgdebu04",
             },
         },
         "how_to_get_your_key": {
@@ -1327,7 +1328,12 @@ def pricing():
             "resend_store_recover": "Admin only: POST /api/admin/resend/recover  {\"admin_secret\": \"...\"} — clears the corrupt resend-attempts store and resets the in-process counter, unblocking /api/key/resend from its 503 fail-closed state without a server restart",
         },
         "success_page": "/success?session_id=<your-session-id>",
-        "stripe_pricing_table": "prctbl_1U04FRIYX4ykfJS5WtHndstc",
+        "stripe_pricing_table": None,
+        "stripe_payment_links": {
+            "pro_10": "https://buy.stripe.com/eVq8wQg5sbBva9qa85ebu02",
+            "pro_100": "https://buy.stripe.com/5kQ4gA6uS20V81i5RPebu03",
+            "enterprise_1000": "https://buy.stripe.com/7sY8wQ06ueNH5Tacgdebu04",
+        },
         "rapidapi": "https://rapidapi.com/davidjfox998/api/zerobeacon",
         "moat": {"d": D, "beacon": BEACON, "genesis": GENESIS_P},
     }
@@ -1942,7 +1948,7 @@ async def key_check(x_api_key: str | None = Header(default=None)):
     if not rec:
         return JSONResponse(
             {"error": "Key not found.", "purchase": "/pricing",
-             "stripe": "https://buy.stripe.com/eVq7sMdXk5d7chy941ebu01",
+             "stripe": "https://zerobeacon.ai/pricing",
              "paypal": "https://paypal.me/davidfox223"},
             status_code=404,
         )
@@ -2075,7 +2081,7 @@ async def stripe_webhook(
         stripe_customer_id = (sess.get("customer") or "").strip()
 
         # Map payment amount → tier
-        if amt >= 1000:
+        if amt >= 199:
             tier = "enterprise_1000"
         elif amt >= 100:
             tier = "pro_100"
@@ -2112,7 +2118,7 @@ async def stripe_webhook(
             except Exception:
                 email = "unknown"
         amt   = sub.get("plan", {}).get("amount", 0) / 100
-        if amt >= 1000:
+        if amt >= 199:
             tier = "enterprise_1000"
         elif amt >= 100:
             tier = "pro_100"
@@ -2372,7 +2378,7 @@ async def mcp_post(request: Request):
                 .replace("_", " ")
                 .replace("pro 10",          "PRO ($10/mo)")
                 .replace("pro 100",         "PRO+ ($100/mo)")
-                .replace("enterprise 1000", "ENTERPRISE ($1,000)")
+                .replace("enterprise 1000", "ENTERPRISE ($199/mo)")
             )
             _key_present = bool(api_key)
             # Conversion log — grep TIER_BLOCK to count daily upgrade opportunities
@@ -2384,17 +2390,17 @@ async def mcp_post(request: Request):
             if not _key_present:
                 _msg = (
                     f"{_tier_label} required — 100 tools free, 400 with PRO ($10/mo), "
-                    "800 with PRO+ ($100/mo), 1052 with ENTERPRISE ($1,000).\n"
+                    "800 with PRO+ ($100/mo), 1052 with ENTERPRISE ($199/mo).\n"
                     "Upgrade: https://zerobeacon.ai/upgrade\n"
-                    "Stripe checkout: https://buy.stripe.com/eVq7sMdXk5d7chy941ebu01"
+                    "Stripe checkout: https://zerobeacon.ai/pricing"
                 )
             else:
                 _msg = (
                     f"{_tier_label} required — your key doesn't have this tier. "
                     "100 tools free, 400 with PRO ($10/mo), 800 with PRO+ ($100/mo), "
-                    "1052 with ENTERPRISE ($1,000).\n"
+                    "1052 with ENTERPRISE ($199/mo).\n"
                     "Upgrade: https://zerobeacon.ai/upgrade\n"
-                    "Stripe checkout: https://buy.stripe.com/eVq7sMdXk5d7chy941ebu01"
+                    "Stripe checkout: https://zerobeacon.ai/pricing"
                 )
             # JSON-RPC error -32001 is the documented tier-gate response.
             # Keep HTTP 200: MCP clients treat a non-2xx transport response as
@@ -2414,7 +2420,7 @@ async def mcp_post(request: Request):
                             "tools_pro_plus": 800,
                             "tools_enterprise": 1052,
                             "upgrade": "https://zerobeacon.ai/upgrade",
-                            "stripe": "https://buy.stripe.com/eVq7sMdXk5d7chy941ebu01",
+                            "stripe": "https://zerobeacon.ai/pricing",
                             "rapidapi": "https://rapidapi.com/davidjfox998/api/zerobeacon",
                             "paypal": "https://paypal.me/davidfox223",
                         },
