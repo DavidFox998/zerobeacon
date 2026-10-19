@@ -56,7 +56,7 @@ PAYPAL_EMAIL = "davidfox223@gmail.com"   # update to your full PayPal email if n
 PAYPAL_ME    = "https://paypal.me/davidfox223"
 PAYPAL_LINK_10   = "https://paypal.me/davidfox223/10"
 PAYPAL_LINK_100  = "https://paypal.me/davidfox223/100"
-PAYPAL_LINK_1000 = "https://paypal.me/davidfox223/1000"
+PAYPAL_LINK_199 = "https://paypal.me/davidfox223/199"
 
 # ---------------------------------------------------------------------------
 # Tier definitions  (informational — enforcement is future work)
@@ -89,7 +89,7 @@ TIERS = {
     "enterprise_1000": {
         "price": "$199/month",
         "tools": 1052,
-        "paypal": PAYPAL_LINK_1000,
+        "paypal": PAYPAL_LINK_199,
         "description": "Research grade — mesh, consciousness, omega, sieve, arakelov",
         "sample": ["mesh_form", "mesh_treasury", "consciousness_proof", "omega_seal",
                    "eternal_audit", "cosmic_heartbeat", "immortal_seal", "genesis_proof"],
