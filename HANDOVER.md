@@ -148,9 +148,35 @@ depends on it.
    type replaces the monospace wall (mono kept for code/beacon).
    Also fixed: /upgrade returned 404 while tier-error messages point
    there — it now redirects (307) to the landing page.
-5. RapidAPI listings: founder's standing plan is delete-all-and-recreate
-   once RapidAPI access is connected. Not yet done; destructive, needs
-   his exact confirmation at execution time.
+5. RapidAPI — RESOLVED 2026-10-18. The stale entropy-era listing
+   ("ZeroBeacon", wired to the stopped legacy app) was deleted on the
+   founder's exact confirmation and rebuilt the same day as
+   "ZeroBeacon.ai" (rapidapi.com/davidjfox998/api/zerobeacon-ai):
+   honest description, X-API-Key auth, base URL
+   https://api.zerobeacon.ai, plans BASIC $0/100 · PRO $10/10k ·
+   ULTRA $100/100k · MEGA $199 (Studio caps "unlimited" at
+   7,133,333/mo). RapidAPI caps one API at 450 paths, so the listing
+   carries the FREE+PRO spec (427 paths, MF-01-08, incl. the full
+   demo trio) = 829 endpoints. The spec's stale info block (1050
+   tools, $19/$99 tiers line) was fixed at the source first
+   (commit 7ed2baa5). Account sign-in is via Google
+   (davidjfox998@gmail.com); a saved email/password is NOT the
+   credential. Still open: sibling listings for the PRO+ (427 paths)
+   and ENTERPRISE (227) specs — the Brain endpoints ride in every
+   spec — and a deprecated duplicate BASIC plan artifact (500k/mo;
+   only subscriber is the founder's own account).
+8. Proxy-secret pairing (2026-10-18): each Studio project generates
+   its OWN X-RapidAPI-Proxy-Secret (view/copy only — it cannot be
+   set or regenerated in Studio). Pairing = copy it in Studio and
+   set it in Fly (RAPIDAPI_PROXY_SECRET); the value moves by
+   clipboard/dashboard only, never through chat or files. The
+   server accepts a comma-separated LIST of secrets, one per
+   listing (core/rapidapi_auth.py, commit f4d68745; tests in
+   test_rapidapi_tier_gate.py::TestProxySecretList). The main
+   listing was paired 2026-10-18. Until a listing is paired, its
+   paid tiers fail closed; free/BASIC traffic is not secret-gated.
+   Note: Fly's dashboard "Deploy Secrets" button was unresponsive
+   to automation — a repo CI deploy applies staged secrets too.
 6. Stripe reconciled to Option B 2026-10-18 (see Money flow): new
    $10/$100/$199 catalog live, webhook threshold fixed, site and code
    swept, Amplum catalog and old payment link archived.
