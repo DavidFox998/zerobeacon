@@ -181,18 +181,24 @@ def _save_resend() -> None:
 
 
 def issue_key(tier: str, email: str, session_id: str | None = None,
-              stripe_customer_id: str | None = None) -> str:
+              stripe_customer_id: str | None = None,
+              expires_at: int | None = None) -> str:
     """
     Generate a new API key for `email` at `tier`, persist it, return the key.
     If `session_id` is provided (Stripe checkout session), bind the key to it
     so the customer can retrieve it via the success-redirect proof-of-payment flow.
     If `stripe_customer_id` is provided, store it so revocation can target the
     specific Stripe customer rather than matching solely by email.
+    If `expires_at` (unix seconds) is provided, the key is time-boxed: once
+    the timestamp passes, the key confers only the free tier (see
+    _effective_tier). Used for evaluation keys that must die on a fixed date.
     """
     if tier not in TIER_RANK:
         raise ValueError(f"Unknown tier: {tier}")
     key = "zbk_" + secrets.token_hex(16)
     record: dict = {"tier": tier, "email": email, "created_at": int(time.time())}
+    if expires_at:
+        record["expires_at"] = int(expires_at)
     if stripe_customer_id:
         record["stripe_customer_id"] = stripe_customer_id
     _store[key] = record
@@ -217,10 +223,23 @@ def lookup_by_session(session_id: str) -> str | None:
     return _session_map.get(session_id)
 
 
+def _effective_tier(rec: dict) -> str:
+    """The tier a key record confers RIGHT NOW (expiry-aware).
+
+    A record with an `expires_at` in the past confers only the free tier,
+    whatever its stored tier says — the stored tier is left untouched so
+    the record still shows what was issued.
+    """
+    exp = rec.get("expires_at")
+    if exp and int(time.time()) >= int(exp):
+        return "free"
+    return rec["tier"]
+
+
 def tier_of(api_key: str) -> str:
     """Return the tier string for `api_key`, or 'free' if not found."""
     rec = _store.get(api_key)
-    return rec["tier"] if rec else "free"
+    return _effective_tier(rec) if rec else "free"
 
 
 def rank_of(tier: str) -> int:
@@ -239,12 +258,18 @@ def check_access(api_key: str | None, required_tier: str) -> tuple[bool, str]:
     rec = lookup(api_key)
     if rec is None:
         return False, "Unknown API key"
-    caller_rank = TIER_RANK.get(rec["tier"], 0)
+    eff_tier = _effective_tier(rec)
+    if eff_tier != rec["tier"]:
+        return False, (
+            "API key has expired (time-boxed evaluation key). "
+            "See https://zerobeacon.ai/pricing"
+        )
+    caller_rank = TIER_RANK.get(eff_tier, 0)
     required_rank = TIER_RANK.get(required_tier, 0)
     if caller_rank >= required_rank:
-        return True, rec["tier"]
+        return True, eff_tier
     return False, (
-        f"Key tier '{rec['tier']}' is below required tier '{required_tier}'. "
+        f"Key tier '{eff_tier}' is below required tier '{required_tier}'. "
         "Upgrade at https://zerobeacon.ai/pricing"
     )
 
