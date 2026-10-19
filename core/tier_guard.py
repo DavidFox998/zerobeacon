@@ -27,7 +27,7 @@ a 403 surfaces as an opaque HTTP error with no visible message.
 
 from fastapi import Depends, Header, Request
 from core import keystore
-from core.rapidapi_auth import verify_rapidapi_request
+from core.rapidapi_auth import verify_rapidapi_request, gateway_headers_seen
 
 
 # ── Custom exception ───────────────────────────────────────────────────────────
@@ -41,11 +41,12 @@ class TierAccessError(Exception):
     """
 
     def __init__(self, caller_tier: str, required_tier: str, key_present: bool,
-                 auth_path: str = "native"):
+                 auth_path: str = "native", headers_seen: dict | None = None):
         self.caller_tier  = caller_tier
         self.required_tier = required_tier
         self.key_present  = key_present
         self.auth_path    = auth_path
+        self.headers_seen = headers_seen
         super().__init__(self._build_message())
 
     def _build_message(self) -> str:
@@ -80,6 +81,7 @@ class TierAccessError(Exception):
             "required_tier":   self.required_tier,
             "your_tier":       self.caller_tier,
             "auth_path":       self.auth_path,
+            "rapidapi_headers_seen": self.headers_seen,
             "tools_free":      100,
             "tools_pro":       400,
             "tools_pro_plus":  800,
@@ -162,6 +164,7 @@ def require_tier(min_tier: str):
                 required_tier=min_tier,
                 key_present=key_present,
                 auth_path=auth_path,
+                headers_seen=gateway_headers_seen(request.headers),
             )
 
     return _check
