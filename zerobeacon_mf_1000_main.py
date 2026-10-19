@@ -12,7 +12,7 @@ from core.keystore import ResendPersistenceError
 from core.tier_guard import require_tier, TierAccessError
 from core.emailer import send_api_key_email, validate_resend_key
 from core.log_redactor import install_redaction_filter
-from core.rapidapi_auth import verify_rapidapi_request, RAPIDAPI_SUBSCRIPTION_TIER, check_rapidapi_proxy_secret
+from core.rapidapi_auth import verify_rapidapi_request, RAPIDAPI_SUBSCRIPTION_TIER, check_rapidapi_proxy_secret, gateway_headers_seen
 
 # Install log redaction immediately so no zbk_... key can reach any log sink,
 # including future structured loggers, exception traceback capturers, or
@@ -668,6 +668,7 @@ async def tier_gate(request: Request, call_next):
                     "required_tier":   required_tier,
                     "your_tier":       "free",
                     "auth_path":       _auth_path,
+                    "rapidapi_headers_seen": gateway_headers_seen(request.headers),
                     "tools_free":      100,
                     "tools_pro":       400,
                     "tools_pro_plus":  800,
