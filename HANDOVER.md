@@ -180,6 +180,29 @@ depends on it.
 6. Stripe reconciled to Option B 2026-10-18 (see Money flow): new
    $10/$100/$199 catalog live, webhook threshold fixed, site and code
    swept, Amplum catalog and old payment link archived.
+7. RapidAPI verification state, corrected 2026-10-19: the tier bodies
+   carry an `auth_path` field (native / rapidapi_unverified /
+   rapidapi_verified). Playground/console calls arrive with NO
+   RapidAPI headers (auth_path native) and never exercise the secret
+   check; a genuine consumer call through the main gateway host also
+   read `native` (2026-10-19) — it carried no X-RapidAPI-Key, which
+   `verify_rapidapi_request` requires before it even looks at the
+   proxy secret. RapidAPI's gateway does not forward the consumer's
+   key to the origin (by design); provenance is the proxy secret
+   alone. Pending confirmation via GET /debug/headers through the
+   gateway (returns header NAMES only), the fix is to drop the
+   key-header requirement and verify on the secret + subscription
+   headers alone. Server-side fail-closed behavior is proven (forged
+   MEGA + wrong/no secret -> rapidapi_unverified, refused).
+8. Evaluation (judges') keys, added 2026-10-19: keystore supports
+   time-boxed keys (`expires_at` on the record; an expired key
+   confers only the free tier). Mint/revoke via POST
+   /api/admin/keys/issue and /api/admin/keys/revoke, gated by the
+   ADMIN_SECRET env var (fail-closed 403 until the owner sets it in
+   Fly). First planned use: one ENTERPRISE key labeled
+   amazon-judges@zerobeacon.ai expiring 2027-04-01 (epoch 1806537600),
+   distributed only through the contest submission's judges-only
+   fields — never in the video, repo, or landing page.
 
 ## Operating rules
 
