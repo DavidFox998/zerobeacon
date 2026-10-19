@@ -1933,6 +1933,96 @@ async def debug_trigger_stale_probe(request: Request):
     }
 
 
+def _admin_authorized(body: dict) -> bool:
+    """Shared ADMIN_SECRET gate for the /api/admin/* endpoints.
+
+    Fails closed: when ADMIN_SECRET is not configured, every caller is
+    rejected (the endpoint is disabled until the owner sets the secret).
+    """
+    admin_secret = os.environ.get("ADMIN_SECRET", "")
+    if not admin_secret:
+        print(
+            "[admin] WARNING: an /api/admin/* endpoint was called but "
+            "ADMIN_SECRET is not set in the environment. The endpoint is "
+            "disabled until ADMIN_SECRET is configured "
+            "(fly secrets set ADMIN_SECRET=...). Callers get 403.",
+            flush=True,
+        )
+        return False
+    return body.get("admin_secret") == admin_secret
+
+
+@app.post("/api/admin/keys/issue")
+async def api_admin_keys_issue(request: Request):
+    """
+    Admin endpoint: mint an API key at any tier, optionally time-boxed.
+
+    Used for evaluation keys (e.g. contest judges) that must expire on a
+    fixed date regardless of revocation. The key is returned ONCE in the
+    response; it is stored in the keystore like any customer key and can
+    be revoked early via /api/admin/keys/revoke.
+
+    Request body: {"admin_secret": "...", "tier": "enterprise_1000",
+                   "email": "label@example", "expires_at": 1806537600}
+    Returns 200 with the key, 403 on bad/missing secret, 400 on bad fields.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+
+    if not _admin_authorized(body):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+
+    tier = (body.get("tier") or "").strip()
+    email = (body.get("email") or "").strip()
+    if tier not in keystore.TIER_RANK:
+        return JSONResponse({"error": f"unknown tier: {tier!r}"}, status_code=400)
+    if not email:
+        return JSONResponse({"error": "email (label) is required"}, status_code=400)
+    expires_at = body.get("expires_at")
+    if expires_at is not None:
+        try:
+            expires_at = int(expires_at)
+        except (TypeError, ValueError):
+            return JSONResponse({"error": "expires_at must be a unix timestamp"}, status_code=400)
+
+    key = keystore.issue_key(tier, email, expires_at=expires_at)
+    return {
+        "ok": True,
+        "key": key,
+        "tier": tier,
+        "email": email,
+        "expires_at": expires_at,
+        "message": "Key issued. Store it now — it is not retrievable later.",
+    }
+
+
+@app.post("/api/admin/keys/revoke")
+async def api_admin_keys_revoke(request: Request):
+    """
+    Admin endpoint: downgrade every key issued under an email label to free.
+
+    Request body: {"admin_secret": "...", "email": "label@example"}
+    Returns 200 with the number of keys downgraded, 403 on bad secret,
+    400 on missing email.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+
+    if not _admin_authorized(body):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+
+    email = (body.get("email") or "").strip()
+    if not email:
+        return JSONResponse({"error": "email (label) is required"}, status_code=400)
+
+    revoked = keystore.revoke_by_email(email)
+    return {"ok": True, "email": email, "revoked": revoked}
+
+
 @app.post("/api/key/resend")
 async def api_key_resend(request: Request):
     """
