@@ -624,8 +624,8 @@ async def tier_gate(request: Request, call_next):
             _tier_label = (
                 required_tier
                 .replace("_", " ")
-                .replace("pro 10",          "PRO ($10/mo)")
                 .replace("pro 100",         "PRO+ ($100/mo)")
+                .replace("pro 10",          "PRO ($10/mo)")
                 .replace("enterprise 1000", "ENTERPRISE ($199/mo)")
             )
             # Conversion log — grep for TIER_BLOCK to count daily upgrade opportunities
@@ -652,6 +652,14 @@ async def tier_gate(request: Request, call_next):
             # HTTP 403 for REST routes. MCP denials are handled separately
             # in the /mcp handler using JSON-RPC error code -32001 (HTTP 200)
             # so MCP clients see the error inside the tool response.
+            # Auth-path telemetry (see core/tier_guard.py): distinguishes a
+            # RapidAPI request whose proxy secret verified from one that
+            # fell through to free on an absent/mismatched secret.
+            _auth_path = (
+                "rapidapi_verified" if rapidapi_tier is not None
+                else "rapidapi_unverified" if request.headers.get("x-rapidapi-key")
+                else "native"
+            )
             return JSONResponse(
                 {
                     "ok":              False,
@@ -659,6 +667,7 @@ async def tier_gate(request: Request, call_next):
                     "message":         _msg,
                     "required_tier":   required_tier,
                     "your_tier":       "free",
+                    "auth_path":       _auth_path,
                     "tools_free":      100,
                     "tools_pro":       400,
                     "tools_pro_plus":  800,
@@ -2520,8 +2529,8 @@ async def mcp_post(request: Request):
             _tier_label = (
                 required_tier
                 .replace("_", " ")
-                .replace("pro 10",          "PRO ($10/mo)")
                 .replace("pro 100",         "PRO+ ($100/mo)")
+                .replace("pro 10",          "PRO ($10/mo)")
                 .replace("enterprise 1000", "ENTERPRISE ($199/mo)")
             )
             _key_present = bool(api_key)

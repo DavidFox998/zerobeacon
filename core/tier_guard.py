@@ -40,18 +40,20 @@ class TierAccessError(Exception):
     an opaque HTTP 403 error.
     """
 
-    def __init__(self, caller_tier: str, required_tier: str, key_present: bool):
+    def __init__(self, caller_tier: str, required_tier: str, key_present: bool,
+                 auth_path: str = "native"):
         self.caller_tier  = caller_tier
         self.required_tier = required_tier
         self.key_present  = key_present
+        self.auth_path    = auth_path
         super().__init__(self._build_message())
 
     def _build_message(self) -> str:
         tier_label = (
             self.required_tier
             .replace("_", " ")
-            .replace("pro 10",          "PRO ($10/mo)")
             .replace("pro 100",         "PRO+ ($100/mo)")
+            .replace("pro 10",          "PRO ($10/mo)")
             .replace("enterprise 1000", "ENTERPRISE ($199/mo)")
         )
         if not self.key_present:
@@ -77,6 +79,7 @@ class TierAccessError(Exception):
             "message":         self._build_message(),
             "required_tier":   self.required_tier,
             "your_tier":       self.caller_tier,
+            "auth_path":       self.auth_path,
             "tools_free":      100,
             "tools_pro":       400,
             "tools_pro_plus":  800,
@@ -115,7 +118,7 @@ def require_tier(min_tier: str):
         x_rapidapi_subscription: str | None = Header(default=None),
         api_key: str | None = Header(default=None),   # Smithery: apiKey → api-key
     ):
-        rapidapi_tier, _ = verify_rapidapi_request(
+        rapidapi_tier, _rapidapi_reason = verify_rapidapi_request(
             x_rapidapi_key=x_rapidapi_key,
             x_rapidapi_proxy_secret=x_rapidapi_proxy_secret,
             x_rapidapi_subscription=x_rapidapi_subscription,
@@ -141,11 +144,24 @@ def require_tier(min_tier: str):
                 # tier_of returns "free" for unknown keys — treat as invalid
                 key_present  = (caller_tier != "free")
 
+        # Auth-path telemetry for the error body: lets the owner distinguish
+        # a RapidAPI request whose proxy secret VERIFIED (subscription tier
+        # honored) from one that fell through to free because the secret was
+        # absent or did not match — the two are otherwise indistinguishable
+        # at the free tier. Reveals nothing about the secret itself.
+        if rapidapi_tier is not None:
+            auth_path = "rapidapi_verified"
+        elif x_rapidapi_key:
+            auth_path = "rapidapi_unverified"
+        else:
+            auth_path = "native"
+
         if caller_rank < min_rank:
             raise TierAccessError(
                 caller_tier=caller_tier,
                 required_tier=min_tier,
                 key_present=key_present,
+                auth_path=auth_path,
             )
 
     return _check

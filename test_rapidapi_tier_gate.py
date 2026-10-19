@@ -306,3 +306,35 @@ class TestProxySecretList:
         assert r.status_code == 403, (
             f"Unlisted secret must not validate against a list: {r.text}"
         )
+
+
+# ── auth-path telemetry + tier label ─────────────────────────────────────────
+
+class TestAuthPathTelemetry:
+    """The tier_required body names HOW the caller was authenticated, so the
+    owner can tell a RapidAPI request whose proxy secret verified (and whose
+    subscription was honored) from one that fell through to free."""
+
+    def test_verified_basic_reports_rapidapi_verified(self):
+        path = _first_route("/api/mf/05")
+        r = _rapidapi_get(path, "BASIC")
+        assert r.status_code == 403
+        assert r.json()["auth_path"] == "rapidapi_verified"
+
+    def test_wrong_secret_reports_rapidapi_unverified(self):
+        path = _first_route("/api/mf/05")
+        r = _rapidapi_get(path, "BASIC", proxy_secret="definitely-wrong")
+        assert r.status_code == 403
+        assert r.json()["auth_path"] == "rapidapi_unverified"
+
+    def test_no_rapidapi_headers_reports_native(self):
+        path = _first_route("/api/mf/05")
+        r = client.get(path)
+        assert r.status_code == 403
+        assert r.json()["auth_path"] == "native"
+
+    def test_pro100_label_not_truncated(self):
+        path = _first_route("/api/mf/09")
+        r = client.get(path)
+        assert r.status_code == 403
+        assert "PRO+ ($100/mo) required" in r.json()["message"]
