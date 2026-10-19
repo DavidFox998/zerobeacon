@@ -1492,6 +1492,26 @@ def pricing():
     }
 
 
+@app.get("/debug/headers", include_in_schema=False)
+def debug_headers(request: Request):
+    """Owner diagnostic: which headers actually arrive at the origin.
+
+    Returns header NAMES only — values are never returned, so gateway
+    secrets cannot leak through this route. Used to verify what the
+    RapidAPI gateway injects on genuine consumer calls (2026-10-19:
+    playground and direct calls arrived with no RapidAPI headers at all).
+    """
+    names = sorted({k.lower() for k in request.headers.keys()})
+    watched = (
+        "x-rapidapi-key", "x-rapidapi-host", "x-rapidapi-proxy-secret",
+        "x-rapidapi-subscription", "x-api-key", "api-key", "authorization",
+    )
+    return {
+        "header_names": names,
+        "watched_headers_present": {h: (h in names) for h in watched},
+    }
+
+
 @app.get("/health")
 def health():
     bp = beacon_payload(GENESIS_P)
