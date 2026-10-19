@@ -1212,6 +1212,14 @@ def _filter_spec(block_min: int, block_max: int, title: str, description: str):
     trimmed["paths"] = kept
     trimmed["info"]["title"] = title
     trimmed["info"]["description"] = description
+    # Carry the production base URL in the export: a RapidAPI spec import
+    # overwrites the Studio project's routing target, and a spec with no
+    # servers block leaves the gateway with no base URL at all (verified
+    # 2026-10-18: re-import wiped the Studio Base URL and every endpoint
+    # returned gateway 400 "Base URL is missing").
+    trimmed["servers"] = [
+        {"url": "https://api.zerobeacon.ai", "description": "ZeroBeacon production (Fly.io)"}
+    ]
     _strip_reserved_header_params(trimmed)
     return trimmed
 
@@ -1305,6 +1313,9 @@ def openapi_rapidapi_all():
         "description": "RapidAPI proxy key — automatically injected by the RapidAPI gateway",
     }
     spec["security"] = [{"ApiKeyAuth": []}, {"RapidApiKeyAuth": []}]
+    spec["servers"] = [
+        {"url": "https://api.zerobeacon.ai", "description": "ZeroBeacon production (Fly.io)"}
+    ]
     _strip_reserved_header_params(spec)
     return spec
 
