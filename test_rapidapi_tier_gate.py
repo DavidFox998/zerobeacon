@@ -356,3 +356,25 @@ class TestDebugHeaders:
         r = client.get("/debug/headers")
         assert r.status_code == 200
         assert r.json()["watched_headers_present"]["x-rapidapi-key"] is False
+
+
+class TestRapidapiHeadersSeen:
+    def test_gateway_shape_flags(self):
+        # The genuine-gateway shape under investigation: secret + subscription
+        # present, consumer key header absent.
+        r = client.post("/api/mf/03/cart_checkout", headers={
+            "X-RapidAPI-Proxy-Secret": "whatever",
+            "X-RapidAPI-Subscription": "BASIC",
+        }, params={"p": 82843})
+        assert r.status_code == 403
+        assert r.json()["rapidapi_headers_seen"] == {
+            "x-rapidapi-key": False,
+            "x-rapidapi-proxy-secret": True,
+            "x-rapidapi-subscription": True,
+            "x-rapidapi-host": False,
+        }
+
+    def test_plain_call_all_false(self):
+        r = client.post("/api/mf/03/cart_checkout", params={"p": 82843})
+        assert r.status_code == 403
+        assert all(v is False for v in r.json()["rapidapi_headers_seen"].values())
