@@ -66,6 +66,12 @@ fly apps restart zerobeacon-mf-1000
 Both values **must match exactly**.  Until they do, all RapidAPI requests arrive
 without a valid proxy secret and are treated as unauthenticated (fail-closed).
 
+**Multiple listings (2026-10-18):** each Studio project generates its OWN secret
+— it is view/copy only in Studio (Gateway → Firewall Settings) and cannot be
+typed in or regenerated. The server accepts a **comma-separated list** in
+`RAPIDAPI_PROXY_SECRET` (one secret per listing, any match validates), so when
+adding a listing, APPEND its secret to the Fly value: `secret1,secret2,...`
+
 ### 5c — Verify
 
 ```bash
@@ -97,23 +103,23 @@ The RapidAPI plan names **must** match the values the server reads from
 | BASIC         | `BASIC`     | free               | 100 (no key)   |
 | PRO           | `PRO`       | pro_10 ($10/mo)    | 400            |
 | ULTRA         | `ULTRA`     | pro_100 ($100/mo)  | 800            |
-| MEGA          | `MEGA`      | enterprise_1000    | All 1000       |
+| MEGA          | `MEGA`      | enterprise_1000    | All 1052       |
 
 Recommended pricing to set in the RapidAPI dashboard:
 
 | Plan  | Price     | Requests/mo |
 |-------|-----------|-------------|
 | BASIC | $0        | 100         |
-| PRO   | $19/mo    | 1 000       |
-| ULTRA | $99/mo    | Unlimited   |
-| MEGA  | $199/mo   | Unlimited   |
+| PRO   | $10/mo    | 10 000      |
+| ULTRA | $100/mo   | 100 000     |
+| MEGA  | $199/mo   | 7 133 333 (Studio caps "unlimited" at this price) |
 
 ---
 
 ## Step 8 — Write the listing description
 
 ```
-ZeroBeacon.ai — 1000 beacon-anchored tools for AI agents.
+ZeroBeacon.ai — 1052 beacon-anchored tools for AI agents.
 
 • Market Router (tools 1–300): payment routing, escrow, delivery proof, budget, notary
 • Math Engine (tools 301–700): Arakelov geometry, Riemann Hypothesis, BSD conjecture,
@@ -122,17 +128,22 @@ ZeroBeacon.ai — 1000 beacon-anchored tools for AI agents.
   mesh treasury, consciousness proof
 
 BASIC: first 100 tools, no key required.
-PRO ($19/mo): 400 tools. ULTRA ($99/mo): 800 tools. MEGA ($199/mo): all 1000 tools.
+PRO ($10/mo): 400 tools. ULTRA ($100/mo): 800 tools. MEGA ($199/mo): all 1052 tools.
 RapidAPI gateway handles auth — no separate API key needed for subscribers.
 
-Beacon: 1d2c7a5b · d=2303582338 · ω²=48/13>0 verified
+Beacon: 1d2c7a5b · d=2303582338
 ```
 
 ---
 
 ## Step 9 — Publish
 
-Click **"Make Public"** and submit for review. RapidAPI typically approves within 24–48 hours.
+Click **"Make Public"** and submit for review. (The 2026-10-18 listing went
+public immediately, no review wait.)
+
+⚠️ **450-path cap:** RapidAPI rejects any spec with more than 450 distinct
+route paths ("environment" maximum). The `-all` spec (1,030 paths) will be
+REFUSED on import. Ship one listing per trimmed spec below instead.
 
 ---
 
