@@ -189,8 +189,10 @@ depends on it.
    `verify_rapidapi_request` requires before it even looks at the
    proxy secret. RapidAPI's gateway does not forward the consumer's
    key to the origin (by design); provenance is the proxy secret
-   alone. Pending confirmation via GET /debug/headers through the
-   gateway (returns header NAMES only), the fix is to drop the
+   alone. Confirmation path: tier-error bodies carry a
+   `rapidapi_headers_seen` field (header presence flags, never
+   values) — re-run a genuine consumer call per listing and read the
+   flags; the fix is to drop the
    key-header requirement and verify on the secret + subscription
    headers alone. Server-side fail-closed behavior is proven (forged
    MEGA + wrong/no secret -> rapidapi_unverified, refused).
@@ -216,3 +218,11 @@ depends on it.
   commerce trio `cart_checkout` → `delivery_final_proof` →
   `dispute_resolve`. Keep those endpoints healthy above all else this
   week.
+
+   Addendum (2026-10-19 evening): the headers_seen telemetry shipped
+   at 25cc729d, was regressed by the paypal-199 merge (93ccf66c —
+   its main file was built from an unfetched origin/main), and was
+   repaired at a4cd288e (middleware import + body field, live-verified
+   by a direct call). Genuine consumer calls via the Replit agent
+   (env: RAPIDAPI_TEST_APP_KEY, FLY_API_TOKEN; no ADMIN var) routed
+   correctly on all three listings with correct tier labels.
