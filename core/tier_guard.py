@@ -83,7 +83,7 @@ class TierAccessError(Exception):
             "tools_enterprise": 1052,
             "upgrade":         "https://zerobeacon.ai/upgrade",
             "stripe":          "https://zerobeacon.ai/pricing",
-            "rapidapi":        "https://rapidapi.com/davidjfox998/api/zerobeacon",
+            "rapidapi":        "https://rapidapi.com/davidjfox998/api/zerobeacon-ai",
             "paypal":          "https://paypal.me/davidfox223",
         }
 

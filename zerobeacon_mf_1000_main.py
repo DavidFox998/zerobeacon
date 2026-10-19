@@ -600,7 +600,7 @@ async def tier_gate(request: Request, call_next):
             allowed = caller_rank >= required_rank
             reason  = rapidapi_tier if allowed else (
                 f"RapidAPI subscription '{rapidapi_tier}' is below required tier "
-                f"'{required_tier}'. Upgrade at https://rapidapi.com/davidjfox998/api/zerobeacon"
+                f"'{required_tier}'. Upgrade at https://rapidapi.com/davidjfox998/api/zerobeacon-ai"
             )
         else:
             # Native zbk_ key, Smithery api_key/api-key header, or no key.
@@ -665,7 +665,7 @@ async def tier_gate(request: Request, call_next):
                     "tools_enterprise": 1052,
                     "upgrade":         "https://zerobeacon.ai/upgrade",
                     "stripe":          "https://zerobeacon.ai/pricing",
-                    "rapidapi":        "https://rapidapi.com/davidjfox998/api/zerobeacon",
+                    "rapidapi":        "https://rapidapi.com/davidjfox998/api/zerobeacon-ai",
                     "paypal":          "https://paypal.me/davidfox223",
                 },
                 status_code=403,
@@ -857,7 +857,7 @@ async def landing():
   "ts":       {int(_t.time())},
   "paypal":   "https://paypal.me/davidfox223",
   "stripe":   "https://buy.stripe.com/eVq8wQg5sbBva9qa85ebu02",
-  "rapidapi": "https://rapidapi.com/davidjfox998/api/zerobeacon",
+  "rapidapi": "https://rapidapi.com/davidjfox998/api/zerobeacon-ai",
   "site":     "https://zerobeacon.ai"
 }}</div>
 
@@ -924,7 +924,7 @@ async def landing():
     <a href="/pricing">/pricing</a>
     <a href="https://paypal.me/davidfox223" class="paypal">PayPal — davidfox223</a>
     <a href="https://zerobeacon.ai/pricing" class="stripe">Stripe Checkout</a>
-    <a href="https://rapidapi.com/davidjfox998/api/zerobeacon" class="rapidapi" target="_blank" rel="noopener">RapidAPI Marketplace</a>
+    <a href="https://rapidapi.com/davidjfox998/api/zerobeacon-ai" class="rapidapi" target="_blank" rel="noopener">RapidAPI Marketplace</a>
     <a href="https://smithery.ai/servers/davidjfox998/zerobeacon-1050" target="_blank" rel="noopener" style="color:#a78bfa;border-color:#2d1f4a;">Smithery MCP</a>
   </div>
 
@@ -1478,7 +1478,7 @@ def pricing():
             "pro_100": "https://buy.stripe.com/5kQ4gA6uS20V81i5RPebu03",
             "enterprise_1000": "https://buy.stripe.com/7sY8wQ06ueNH5Tacgdebu04",
         },
-        "rapidapi": "https://rapidapi.com/davidjfox998/api/zerobeacon",
+        "rapidapi": "https://rapidapi.com/davidjfox998/api/zerobeacon-ai",
         "moat": {"d": D, "beacon": BEACON, "genesis": GENESIS_P},
     }
 
@@ -2565,7 +2565,7 @@ async def mcp_post(request: Request):
                             "tools_enterprise": 1052,
                             "upgrade": "https://zerobeacon.ai/upgrade",
                             "stripe": "https://zerobeacon.ai/pricing",
-                            "rapidapi": "https://rapidapi.com/davidjfox998/api/zerobeacon",
+                            "rapidapi": "https://rapidapi.com/davidjfox998/api/zerobeacon-ai",
                             "paypal": "https://paypal.me/davidfox223",
                         },
                     },
