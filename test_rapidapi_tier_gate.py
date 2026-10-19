@@ -338,3 +338,21 @@ class TestAuthPathTelemetry:
         r = client.get(path)
         assert r.status_code == 403
         assert "PRO+ ($100/mo) required" in r.json()["message"]
+
+
+class TestDebugHeaders:
+    def test_reports_presence_without_values(self):
+        r = client.get("/debug/headers", headers={
+            "X-RapidAPI-Key": "k",
+            "X-RapidAPI-Proxy-Secret": "s3cr3t-value",
+        })
+        assert r.status_code == 200
+        body = r.json()
+        assert body["watched_headers_present"]["x-rapidapi-key"] is True
+        assert body["watched_headers_present"]["x-rapidapi-proxy-secret"] is True
+        assert "s3cr3t-value" not in r.text
+
+    def test_absent_by_default(self):
+        r = client.get("/debug/headers")
+        assert r.status_code == 200
+        assert r.json()["watched_headers_present"]["x-rapidapi-key"] is False
