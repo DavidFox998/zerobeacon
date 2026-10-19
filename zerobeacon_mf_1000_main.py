@@ -657,7 +657,7 @@ async def tier_gate(request: Request, call_next):
             # fell through to free on an absent/mismatched secret.
             _auth_path = (
                 "rapidapi_verified" if rapidapi_tier is not None
-                else "rapidapi_unverified" if request.headers.get("x-rapidapi-key")
+                else "rapidapi_unverified" if (request.headers.get("x-rapidapi-key") or request.headers.get("x-rapidapi-proxy-secret") or request.headers.get("x-rapidapi-subscription"))
                 else "native"
             )
             return JSONResponse(
