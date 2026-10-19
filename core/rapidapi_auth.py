@@ -36,9 +36,17 @@ RAPIDAPI_SUBSCRIPTION_TIER: dict[str, str] = {
 
 _PROXY_SECRET: str = os.environ.get("RAPIDAPI_PROXY_SECRET", "").strip()
 
+# Each RapidAPI listing (API project) has its OWN proxy secret, and Fly holds
+# a single env var — so the env var may carry a comma-separated LIST of
+# secrets, one per listing. A request is genuine if its header matches ANY
+# configured secret. A single value (no commas) behaves exactly as before.
+# Derived lazily so tests (and any future re-loader) can patch _PROXY_SECRET.
+def _proxy_secrets() -> list[str]:
+    return [s.strip() for s in _PROXY_SECRET.split(",") if s.strip()]
+
 
 def _proxy_secret_configured() -> bool:
-    return bool(_PROXY_SECRET)
+    return bool(_proxy_secrets())
 
 
 
@@ -96,11 +104,14 @@ def verify_rapidapi_request(
     if not x_rapidapi_proxy_secret:
         return None, "X-RapidAPI-Proxy-Secret header missing — request may be forged"
 
-    # Constant-time comparison to prevent timing attacks
-    if not hmac.compare_digest(
-        x_rapidapi_proxy_secret.encode(),
-        _PROXY_SECRET.encode(),
-    ):
+    # Constant-time comparison to prevent timing attacks. Compare against
+    # EVERY configured secret (one per RapidAPI listing) without early exit.
+    provided = x_rapidapi_proxy_secret.encode()
+    matched = False
+    for secret in _proxy_secrets():
+        if hmac.compare_digest(provided, secret.encode()):
+            matched = True
+    if not matched:
         return None, "X-RapidAPI-Proxy-Secret mismatch — request rejected"
 
     # Proxy secret validated — trust the subscription header

@@ -280,3 +280,29 @@ class TestUnknownSubscription:
             },
         )
         assert r.status_code == 403
+
+
+class TestProxySecretList:
+    """RAPIDAPI_PROXY_SECRET may hold a comma-separated list — one secret per
+    RapidAPI listing (each Studio project generates its own). Any listed
+    secret validates; an unlisted one is still rejected."""
+
+    def test_listed_secret_accepted(self):
+        path = _first_route("/api/mf/05")
+        with patch.object(
+            rapidapi_auth, "_PROXY_SECRET", "listing-one-secret," + _TEST_PROXY_SECRET
+        ):
+            r = _rapidapi_get(path, "PRO")
+        assert r.status_code == 200, (
+            f"Second secret in the list should validate: {r.text}"
+        )
+
+    def test_unlisted_secret_rejected_with_list_configured(self):
+        path = _first_route("/api/mf/05")
+        with patch.object(
+            rapidapi_auth, "_PROXY_SECRET", "listing-one-secret,listing-two-secret"
+        ):
+            r = _rapidapi_get(path, "PRO", proxy_secret="not-a-listing-secret")
+        assert r.status_code == 403, (
+            f"Unlisted secret must not validate against a list: {r.text}"
+        )
