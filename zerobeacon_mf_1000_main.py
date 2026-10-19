@@ -46,14 +46,14 @@ from routers import (
 )
 
 app = FastAPI(
-    title="ZeroBeacon.ai — 1050 Tools",
-    version="1050.0.0",
+    title="ZeroBeacon.ai — 1052 Tools",
+    version="1052.0.0",
     description=(
-        "**1050 beacon-anchored tools** across 4 groups:\n\n"
+        "**1052 beacon-anchored tools** across 4 groups:\n\n"
         "- **Market Router (tools 1–300):** payment routing, escrow, delivery proof, budget, notary\n"
         "- **Math Engine (tools 301–700):** Arakelov, Riemann Hypothesis, BSD, Navier-Stokes, Yang-Mills, P vs NP\n"
-        "- **Amplum Everyday (tools 701–1000):** scheduling, memory, legal, will, mesh treasury, consciousness proof\n"
-        "- **Brain Router (tools 1001–1050):** 50 meta-tools — 1 brain that routes all 1000 tools, chain, think, swarm, consensus\n\n"
+        "- **Everyday (tools 701–1000):** scheduling, memory, legal, will, mesh treasury\n"
+        "- **Brain Router (tools 1001–1052):** 52 meta-tools — 1 brain that routes all 1052 tools, chain, think, swarm, consensus\n\n"
         "FREE tier: first 100 tools, no key required.  \n"
         "PRO / ENTERPRISE: pass `X-API-Key: zbk_…` header.  \n"
         "Get a key at https://zerobeacon.ai after Stripe checkout.  \n"
@@ -1229,28 +1229,29 @@ def openapi_rapidapi_enterprise():
 
 @app.get("/openapi-rapidapi-all.json", include_in_schema=False)
 def openapi_rapidapi_all():
-    """Full OpenAPI spec for all 1000 tools — use this URL when creating the RapidAPI listing.
+    """Full OpenAPI spec for all 1052 tools — use this URL when creating the RapidAPI listing.
 
     Groups:
       - Market-Router  (tools 1–300,  MF-01–06)
       - Math-Engine    (tools 301–700, MF-07–14)
-      - Amplum-Everyday(tools 701–1000,MF-15–20)
+      - Everyday (tools 701–1000, MF-15–20)
 
     Auth: pass your ZeroBeacon key as either X-API-Key or X-RapidAPI-Key.
     Get a key at https://zerobeacon.ai after Stripe checkout.
-    RapidAPI tiers: Free (100 req/mo) · Pro $19/mo (1 000 req) · Ultra $99/mo (unlimited)
+    RapidAPI tiers: BASIC free (100 req/mo) · PRO $10/mo (400 tools) · ULTRA $100/mo (800 tools) · MEGA $199/mo (all 1052 tools)
     """
     import copy
     full = app.openapi()
     spec = copy.deepcopy(full)
-    spec["info"]["title"] = "ZeroBeacon.ai — 1000 Tools"
+    spec["info"]["title"] = "ZeroBeacon.ai — 1052 Tools"
     spec["info"]["description"] = (
-        "**1000 beacon-anchored tools** across 3 groups:\n\n"
+        "**1052 beacon-anchored tools** across 4 groups:\n\n"
         "- **Market Router (tools 1–300):** payment routing, escrow, delivery proof, budget, notary\n"
         "- **Math Engine (tools 301–700):** Arakelov, Riemann Hypothesis, BSD, Navier-Stokes, Yang-Mills, P vs NP\n"
-        "- **Amplum Everyday (tools 701–1000):** scheduling, memory, legal, will, mesh treasury, consciousness proof\n\n"
+        "- **Everyday (tools 701–1000):** scheduling, memory, legal, will, mesh treasury\n"
+        "- **Brain Router (tools 1001–1052):** 52 meta-tools — chain, think, swarm, consensus\n\n"
         "**Auth:** Pass your ZeroBeacon API key in `X-API-Key` **or** `X-RapidAPI-Key` header.\n\n"
-        "**RapidAPI tiers:** Free (100 req/mo · no key) · Pro $19/mo (1 000 req) · Ultra $99/mo (unlimited)\n\n"
+        "**RapidAPI tiers:** BASIC free (100 req/mo · no key) · PRO $10/mo (400 tools) · ULTRA $100/mo (800 tools) · MEGA $199/mo (all 1052 tools)\n\n"
         "Get a key at https://zerobeacon.ai — d=2303582338 · beacon=1d2c7a5b"
     )
     # Inject x-rapidapi-key as an accepted security scheme alongside X-API-Key
