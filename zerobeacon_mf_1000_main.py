@@ -1155,13 +1155,48 @@ async def beacon_js(
     return Response(content=js, media_type="application/javascript")
 
 
+def _strip_reserved_header_params(spec):
+    """Remove RapidAPI-reserved header parameters from every operation.
+
+    RapidAPI reserves the X-RapidAPI-* header names for its own gateway
+    (the API-key header comes from the listing's security scheme, not the
+    definition). Operations that declare them as parameters — the MF-03+
+    routers read them via Header() dependencies — fail to register in the
+    gateway, which answers with its generic "not subscribed" 403 even for
+    valid subscribers (verified 2026-10-18: MF-01/02, which declare no such
+    parameters, route fine; MF-03–20 do not). Stripping them from the
+    exported document does not affect the running app, which reads the
+    real headers regardless of what the document declares.
+    """
+    def _kept(params):
+        out = []
+        for p in params:
+            name = p.get("name", "").lower()
+            if p.get("in") == "header" and (
+                name.startswith("x-rapidapi")
+                or name in ("x-api-key", "api-key", "authorization")
+            ):
+                continue
+            out.append(p)
+        return out
+
+    for path_item in spec.get("paths", {}).values():
+        if not isinstance(path_item, dict):
+            continue
+        if "parameters" in path_item:
+            path_item["parameters"] = _kept(path_item["parameters"])
+        for op in path_item.values():
+            if isinstance(op, dict) and "parameters" in op:
+                op["parameters"] = _kept(op["parameters"])
+
+
 def _filter_spec(block_min: int, block_max: int, title: str, description: str):
     """Return a copy of the OpenAPI spec filtered to the given MF block range."""
     import copy
     full = app.openapi()
     trimmed = copy.deepcopy(full)
     kept = {}
-    for path, val in full.get("paths", {}).items():
+    for path, val in trimmed.get("paths", {}).items():
         if "/api/mf/" not in path:
             kept[path] = val
             continue
@@ -1177,6 +1212,7 @@ def _filter_spec(block_min: int, block_max: int, title: str, description: str):
     trimmed["paths"] = kept
     trimmed["info"]["title"] = title
     trimmed["info"]["description"] = description
+    _strip_reserved_header_params(trimmed)
     return trimmed
 
 
@@ -1269,6 +1305,7 @@ def openapi_rapidapi_all():
         "description": "RapidAPI proxy key — automatically injected by the RapidAPI gateway",
     }
     spec["security"] = [{"ApiKeyAuth": []}, {"RapidApiKeyAuth": []}]
+    _strip_reserved_header_params(spec)
     return spec
 
 
