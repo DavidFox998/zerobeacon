@@ -49,6 +49,24 @@ def _proxy_secret_configured() -> bool:
     return bool(_proxy_secrets())
 
 
+WATCHED_GATEWAY_HEADERS = (
+    "x-rapidapi-key", "x-rapidapi-proxy-secret",
+    "x-rapidapi-subscription", "x-rapidapi-host",
+)
+
+
+def gateway_headers_seen(headers) -> dict:
+    """Presence flags for the gateway headers — booleans only.
+
+    Header VALUES are never reported, so the proxy secret cannot leak
+    through this diagnostic. Surfaced in tier error bodies so a caller
+    (or support) can see exactly which headers reached the origin —
+    e.g. whether the RapidAPI gateway injected its proxy secret.
+    """
+    present = {str(k).lower() for k in headers.keys()}
+    return {h: (h in present) for h in WATCHED_GATEWAY_HEADERS}
+
+
 
 def check_rapidapi_proxy_secret() -> tuple[bool, str]:
     """Check whether RAPIDAPI_PROXY_SECRET is configured on this server.
