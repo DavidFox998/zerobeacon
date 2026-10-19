@@ -153,7 +153,7 @@ def require_tier(min_tier: str):
         # at the free tier. Reveals nothing about the secret itself.
         if rapidapi_tier is not None:
             auth_path = "rapidapi_verified"
-        elif x_rapidapi_key:
+        elif x_rapidapi_key or x_rapidapi_proxy_secret or x_rapidapi_subscription:
             auth_path = "rapidapi_unverified"
         else:
             auth_path = "native"
