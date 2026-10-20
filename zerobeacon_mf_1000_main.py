@@ -1,8 +1,8 @@
 from fastapi import FastAPI, Request, Header, Depends, BackgroundTasks
 from tool_schemas import TOOL_SCHEMAS
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, HTMLResponse
-import time, os, stripe, asyncio, json, urllib.request, urllib.error, hmac, hashlib
+from fastapi.responses import JSONResponse, HTMLResponse, Response
+import time, os, stripe, asyncio, json, urllib.request, urllib.error, urllib.parse, hmac, hashlib
 
 from core.beacon import (beacon_payload, D, BEACON, GENESIS_P,
                          TIERS, PRICING_SUMMARY, PAYPAL_ME,
@@ -2586,26 +2586,93 @@ async def brain_fire_post(request: Request):
     return m21.brain_synaptic_fire(intent=intent, threshold=threshold)
 
 
+# ── MCP protocol layer ──────────────────────────────────────────────────────
+# Protocol revisions this server implements for its tools-only, stateless
+# Streamable HTTP surface. Version negotiation follows the MCP Lifecycle
+# spec: answer with the client's version when we support it, otherwise
+# with the latest revision we support.
+MCP_SUPPORTED_VERSIONS = ("2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25")
+MCP_LATEST_VERSION = "2025-11-25"
+# JSON-RPC batching was part of the protocol in 2024-11-05 / 2025-03-26 and
+# was removed in 2025-06-18; batches are honoured only under those revisions.
+_MCP_BATCH_VERSIONS = ("2024-11-05", "2025-03-26")
+
+
+def _mcp_negotiate(requested):
+    """Lifecycle version negotiation (MCP spec, Lifecycle: Version
+    Negotiation): echo the client's version if supported, else answer
+    with the latest version this server supports."""
+    if requested in MCP_SUPPORTED_VERSIONS:
+        return requested
+    return MCP_LATEST_VERSION
+
+
+def _mcp_origin_ok(request: Request) -> bool:
+    """Streamable HTTP security rule (Transports, Security Warning): an
+    Origin header, when present, must be a well-formed http(s) origin; an
+    invalid one MUST be answered HTTP 403. Non-browser clients send no
+    Origin and are unaffected."""
+    origin = request.headers.get("origin")
+    if origin is None:
+        return True
+    try:
+        parts = urllib.parse.urlsplit(origin)
+    except ValueError:
+        return False
+    return parts.scheme in ("http", "https") and bool(parts.netloc)
+
+
+def _mcp_error_body(code: int, message: str) -> dict:
+    # Transport-level errors carry no id (the spec allows the JSON-RPC
+    # error body on an HTTP error response to omit it).
+    return {"jsonrpc": "2.0", "error": {"code": code, "message": message}}
+
+
 @app.get("/mcp")
-def mcp_get():
+def mcp_get(request: Request):
+    if not _mcp_origin_ok(request):
+        return JSONResponse(_mcp_error_body(-32600, "Invalid Origin header"),
+                            status_code=403)
+    # Streamable HTTP (Transports, Listening for Messages): a GET that
+    # asks to open an SSE stream (Accept: text/event-stream) MUST be
+    # answered with a stream or with 405. This server offers no
+    # standalone server-to-client stream, so: 405.
+    if "text/event-stream" in request.headers.get("accept", ""):
+        return JSONResponse(
+            _mcp_error_body(-32600, "Method Not Allowed: no SSE listening stream"),
+            status_code=405)
     return {"jsonrpc": "2.0", "result": {"tools": _build_tool_list()}, "id": "discovery"}
 
 
-@app.post("/mcp")
-async def mcp_post(request: Request):
-    body   = await request.json()
+async def _mcp_handle_message(body, request: Request):
+    """Dispatch one JSON-RPC message for POST /mcp.
+
+    Returns a dict or JSONResponse for requests, or None for
+    notifications and client responses, which must not be answered
+    (the transport replies 202 Accepted with no body)."""
+    if not isinstance(body, dict):
+        return JSONResponse(_mcp_error_body(-32600, "Invalid Request"),
+                            status_code=400)
+    if "id" not in body or body.get("method") is None:
+        return None
+
     method = body.get("method", "")
     req_id = body.get("id", 1)
 
     if method == "initialize":
+        params = body.get("params") or {}
         return {
             "jsonrpc": "2.0", "id": req_id,
             "result": {
-                "protocolVersion": "2024-11-05",
+                "protocolVersion": _mcp_negotiate(params.get("protocolVersion")),
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": "zerobeacon-1050", "version": "1050.0.0"},
             },
         }
+
+    if method == "ping":
+        # Base protocol: a ping receiver MUST answer with an empty result.
+        return {"jsonrpc": "2.0", "id": req_id, "result": {}}
 
     if method in ("tools/list", "tools/list\n"):
         return {"jsonrpc": "2.0", "id": req_id, "result": {"tools": _build_tool_list()}}
@@ -2711,6 +2778,58 @@ async def mcp_post(request: Request):
 
     return JSONResponse({"jsonrpc": "2.0", "id": req_id,
                          "error": {"code": -32601, "message": f"Method not found: {method}"}})
+
+
+@app.post("/mcp")
+async def mcp_post(request: Request):
+    # Streamable HTTP security rule: invalid Origin → 403 (see _mcp_origin_ok).
+    if not _mcp_origin_ok(request):
+        return JSONResponse(_mcp_error_body(-32600, "Invalid Origin header"),
+                            status_code=403)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(
+            {"jsonrpc": "2.0", "id": None,
+             "error": {"code": -32700, "message": "Parse error"}},
+            status_code=400)
+
+    # Protocol Version Header (Transports, Protocol Version Header):
+    # clients send MCP-Protocol-Version on post-initialize requests; an
+    # invalid or unsupported value MUST be answered 400 Bad Request.
+    # Absent header → assume 2025-03-26 (the spec's backwards-
+    # compatibility rule for when the version cannot be identified).
+    version_header = request.headers.get("mcp-protocol-version")
+    if version_header is not None and version_header not in MCP_SUPPORTED_VERSIONS:
+        return JSONResponse(
+            _mcp_error_body(-32600,
+                            f"Unsupported MCP-Protocol-Version: {version_header}"),
+            status_code=400)
+    effective_version = version_header or "2025-03-26"
+
+    if isinstance(body, list):
+        # JSON-RPC batching: honoured only under revisions that define it.
+        if effective_version not in _MCP_BATCH_VERSIONS:
+            return JSONResponse(
+                _mcp_error_body(-32600, "JSON-RPC batching was removed in "
+                                "protocol version 2025-06-18"),
+                status_code=400)
+        out = []
+        for item in body:
+            resp = await _mcp_handle_message(item, request)
+            if resp is None:
+                continue
+            if isinstance(resp, JSONResponse):
+                resp = json.loads(resp.body)
+            out.append(resp)
+        return out
+
+    result = await _mcp_handle_message(body, request)
+    if result is None:
+        # Notification or client response: 202 Accepted, no body
+        # (Transports, Sending Messages to the Server).
+        return Response(status_code=202)
+    return result
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────
