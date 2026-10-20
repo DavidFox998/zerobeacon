@@ -167,3 +167,130 @@ class TestMcpTierGate:
         assert body["error"]["code"] == -32001, (
             f"Expected -32001, got {body['error']['code']}"
         )
+
+
+# ── MCP protocol negotiation (2025-11-25) ─────────────────────────────────────
+
+def _init_payload(version: str) -> dict:
+    return {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": version,
+            "capabilities": {},
+            "clientInfo": {"name": "pytest", "version": "1.0"},
+        },
+    }
+
+
+class TestMcpProtocolNegotiation:
+    """Lifecycle version negotiation + Streamable HTTP transport rules."""
+
+    def test_initialize_2025_11_25_is_negotiated(self):
+        resp = client.post("/mcp", json=_init_payload("2025-11-25"))
+        assert resp.status_code == 200, resp.text
+        result = resp.json()["result"]
+        assert result["protocolVersion"] == "2025-11-25"
+        assert "tools" in result["capabilities"]
+
+    def test_initialize_2024_11_05_still_negotiated(self):
+        """Backward compatibility: older clients keep their version."""
+        resp = client.post("/mcp", json=_init_payload("2024-11-05"))
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["result"]["protocolVersion"] == "2024-11-05"
+
+    def test_initialize_intermediate_versions_echoed(self):
+        for version in ("2025-03-26", "2025-06-18"):
+            resp = client.post("/mcp", json=_init_payload(version))
+            assert resp.status_code == 200, resp.text
+            assert resp.json()["result"]["protocolVersion"] == version
+
+    def test_initialize_unknown_version_gets_latest_supported(self):
+        """Per Lifecycle: unsupported request version -> answer with the
+        latest version the server supports (client may then disconnect)."""
+        resp = client.post("/mcp", json=_init_payload("2026-06-01"))
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["result"]["protocolVersion"] == "2025-11-25"
+
+    def test_unsupported_protocol_version_header_is_400(self):
+        resp = client.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+            headers={"MCP-Protocol-Version": "1999-01-01"},
+        )
+        assert resp.status_code == 400, resp.text
+
+    def test_supported_protocol_version_header_ok(self):
+        resp = client.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+            headers={"MCP-Protocol-Version": "2025-11-25"},
+        )
+        assert resp.status_code == 200, resp.text
+        assert len(resp.json()["result"]["tools"]) > 0
+
+    def test_notification_initialized_returns_202_no_body(self):
+        resp = client.post("/mcp", json={
+            "jsonrpc": "2.0", "method": "notifications/initialized",
+        })
+        assert resp.status_code == 202, resp.text
+        assert resp.content == b""
+
+    def test_ping_returns_empty_result(self):
+        resp = client.post("/mcp", json={
+            "jsonrpc": "2.0", "id": 3, "method": "ping",
+        })
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["result"] == {}
+
+    def test_batch_rejected_at_2025_11_25(self):
+        """Batching was removed in 2025-06-18; at a negotiated 2025-11-25
+        (via header) a batch body must be refused with 400."""
+        resp = client.post(
+            "/mcp",
+            json=[{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}],
+            headers={"MCP-Protocol-Version": "2025-11-25"},
+        )
+        assert resp.status_code == 400, resp.text
+
+    def test_batch_honoured_at_2025_03_26(self):
+        """Under revisions that define batching, items are dispatched and
+        notifications inside the batch produce no response entry."""
+        resp = client.post(
+            "/mcp",
+            json=[
+                {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+                {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            ],
+            headers={"MCP-Protocol-Version": "2025-03-26"},
+        )
+        assert resp.status_code == 200, resp.text
+        out = resp.json()
+        assert isinstance(out, list) and len(out) == 1
+        assert len(out[0]["result"]["tools"]) > 0
+
+    def test_invalid_origin_is_403(self):
+        resp = client.post(
+            "/mcp", json=_init_payload("2025-11-25"),
+            headers={"Origin": "not a url"},
+        )
+        assert resp.status_code == 403, resp.text
+
+    def test_wellformed_origin_is_accepted(self):
+        resp = client.post(
+            "/mcp", json=_init_payload("2025-11-25"),
+            headers={"Origin": "https://client.example"},
+        )
+        assert resp.status_code == 200, resp.text
+
+    def test_get_with_sse_accept_is_405(self):
+        """Streamable HTTP: GET for a listening stream we do not offer
+        must be 405 (a stream is the only alternative)."""
+        resp = client.get("/mcp", headers={"Accept": "text/event-stream"})
+        assert resp.status_code == 405, resp.text
+
+    def test_get_discovery_still_works(self):
+        resp = client.get("/mcp")
+        assert resp.status_code == 200, resp.text
+        assert len(resp.json()["result"]["tools"]) > 0
