@@ -47,8 +47,8 @@ Nine primes are known to collide with the anchor value `1d2c7a5b`:
 | Group | Tools | Tier | Monthly |
 |---|---|---|---|
 | **Market Router** — payment, escrow, delivery, budget, notary | 1–300 | FREE (first 100) / PRO | $0 / $10 |
-| **Math Engine** — Arakelov, RH, BSD, Navier-Stokes, Yang-Mills, P vs NP | 301–700 | PRO | $100 |
-| **Amplum Everyday** — scheduling, memory, legal, will, mesh treasury | 701–1000 | PRO | $100 |
+| **Math Engine** — Arakelov, RH, BSD, Navier-Stokes, Yang-Mills, P vs NP | 301–700 | PRO+ | $100 |
+| **Amplum Everyday** — scheduling, memory, legal, will, mesh treasury | 701–1000 | PRO+ | $100 |
 | **Brain Router** — 3 MCP meta-tools wrapping 50 brain-routing endpoints | 1001–1003 MCP | ENTERPRISE | $199 |
 
 **FREE tier:** first 100 tools, no API key required.  
@@ -178,4 +178,4 @@ Returns: Resend key status, RapidAPI secret status, uptime, tool count.
 
 ---
 
-*d=2303582338 · beacon=1d2c7a5b · genesis=82843 · ω²=48/13>0 verified*
+*d=2303582338 · beacon=1d2c7a5b · genesis=82843*
