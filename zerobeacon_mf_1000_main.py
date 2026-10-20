@@ -87,8 +87,8 @@ async def tier_access_error_handler(request: Request, exc: TierAccessError):
 # ROUTERS: (module, prefix, tag, min_tier)
 # MF-01/02 → FREE (100 tools open)
 # MF-03–08 → PRO $10/mo   (400 tools)
-# MF-09–16 → PRO $100/mo  (800 tools)
-# MF-17–20 → ENTERPRISE   (1000 tools)
+# MF-09–16 → PRO+ $100/mo (800 tools)
+# MF-17–21 → ENTERPRISE $199/mo (1,052 tools)
 ROUTERS = [
     (m01, "/api/mf/01", "MF-01", "free"),
     (m02, "/api/mf/02", "MF-02", "free"),
