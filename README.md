@@ -44,16 +44,33 @@ Nine primes are known to collide with the anchor value `1d2c7a5b`:
 
 ## Tool Groups
 
-| Group | Tools | Tier | Monthly |
-|---|---|---|---|
-| **Market Router** — payment, escrow, delivery, budget, notary | 1–300 | FREE (first 100) / PRO | $0 / $10 |
-| **Math Engine** — Arakelov, RH, BSD, Navier-Stokes, Yang-Mills, P vs NP | 301–700 | PRO+ | $100 |
-| **Amplum Everyday** — scheduling, memory, legal, will, mesh treasury | 701–1000 | PRO+ | $100 |
-| **Brain Router** — 3 MCP meta-tools wrapping 50 brain-routing endpoints | 1001–1003 MCP | ENTERPRISE | $199 |
+Catalogue organization only — the four groups span the 21 blocks (MF-01–MF-21) and cross tier boundaries. Access is gated per block, not per group; see Access Tiers.
 
-**FREE tier:** first 100 tools, no API key required.  
-**PRO / ENTERPRISE:** pass `X-API-Key: zbk_…` header.  
+| Group | Tools | Count |
+|---|---|---|
+| **Market Router** — payment, escrow, delivery, budget, notary | 1–300 | 300 |
+| **Math Engine** — Arakelov, RH, BSD, Navier-Stokes, Yang-Mills, P vs NP | 301–700 | 400 |
+| **Amplum Everyday** — scheduling, memory, legal, will, mesh treasury | 701–1000 | 300 |
+| **Brain Router** — meta-tools that route the full catalogue: route, chain, think, swarm, consensus | 1001–1052 | 52 |
+
+---
+
+## Access Tiers
+
+Tiers are cumulative. Each tier unlocks whole blocks at `/api/mf/{block}` — the labels below are exactly the gates enforced in code (`ROUTERS` in `zerobeacon_mf_1000_main.py`). Every block appears exactly once, so every tool carries its tier by construction.
+
+| Tier | Monthly | Tools (cumulative) | Blocks unlocked |
+|---|---|---|---|
+| FREE | $0 | 100 | MF-01–MF-02 |
+| PRO | $10 | 400 | + MF-03–MF-08 |
+| PRO+ | $100 | 800 | + MF-09–MF-16 |
+| ENTERPRISE | $199 | 1,052 | + MF-17–MF-21 |
+
+**FREE tier:** no API key required.  
+**Paid tiers:** pass `X-API-Key: zbk_…` header.  
 Get a key at https://zerobeacon.ai after Stripe checkout.
+
+MCP note: `tools/list` exposes 1,003 operations — the 1,000 block tools (MF-01–MF-20) plus MF-21's `brain`, `brain/fire`, and `brain/status`. The remaining MF-21 endpoints are REST-only; that difference is the 1,052 catalogue vs 1,003 MCP counts above.
 
 ---
 
