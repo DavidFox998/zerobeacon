@@ -3,7 +3,9 @@
 # ZeroBeacon.ai — Collision-Anchored Commerce Router
 
 **1,003 MCP operations** for agent commerce, legal sealing, and math research.  
-Live API: `https://zerobeacon.ai`
+Live API: `https://zerobeacon.ai`  
+MCP endpoint: `POST https://zerobeacon.ai/mcp` — Streamable HTTP; negotiates protocol revisions 2024-11-05 through 2025-11-25.  
+Counts, reconciled: `tools/list` returns the 1,003 operations callable over MCP; `/health` reports `tools: 1052, routers: 21` — the full catalogue, including the REST-only endpoint surface. Both figures are live-checkable.
 
 ---
 
@@ -18,6 +20,10 @@ ZeroBeacon has two distinct layers:
 
 The beacon is **not collision-proof** and does not claim to be.  
 It is **collision-anchored**: two known primes (P1 = 3000105001, P2 = 5303687339) are intentional fixed points that produce the canonical beacon value `1d2c7a5b`. Everything else is probabilistic.
+
+Every tool is registered at its own block-anchored address, `/api/mf/{block}/{tool}` (e.g. `/api/mf/01/beacon`). Tool names repeat across blocks by design; the address, not the name, is a tool's identity.
+The addressing is generated from four primes — 11, 13, 17, 19 — and the constant 1419 = 3 × 11 × 43.
+The anchoring method descends from the Eutheos programme, a Lean 4–verified witness family maintained in the separate [eutheos-property](https://github.com/DavidFox998/eutheos-property) repo. That verification covers the witness family, not this API.
 
 ---
 
@@ -43,7 +49,7 @@ Nine primes are known to collide with the anchor value `1d2c7a5b`:
 | **Market Router** — payment, escrow, delivery, budget, notary | 1–300 | FREE (first 100) / PRO | $0 / $10 |
 | **Math Engine** — Arakelov, RH, BSD, Navier-Stokes, Yang-Mills, P vs NP | 301–700 | PRO | $100 |
 | **Amplum Everyday** — scheduling, memory, legal, will, mesh treasury | 701–1000 | PRO | $100 |
-| **Brain Router** — 3 MCP meta-tools wrapping 50 brain-routing endpoints | 1001–1003 MCP | ENTERPRISE | $1000 |
+| **Brain Router** — 3 MCP meta-tools wrapping 50 brain-routing endpoints | 1001–1003 MCP | ENTERPRISE | $199 |
 
 **FREE tier:** first 100 tools, no API key required.  
 **PRO / ENTERPRISE:** pass `X-API-Key: zbk_…` header.  
