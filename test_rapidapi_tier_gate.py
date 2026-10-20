@@ -378,3 +378,33 @@ class TestRapidapiHeadersSeen:
         r = client.post("/api/mf/03/cart_checkout", params={"p": 82843})
         assert r.status_code == 403
         assert all(v is False for v in r.json()["rapidapi_headers_seen"].values())
+
+
+class TestGatewayShapeNoKeyHeader:
+    """The genuine RapidAPI gateway does NOT forward the consumer's
+    X-RapidAPI-Key to the origin (confirmed 2026-10-19 by a real consumer
+    call arriving with auth_path 'native'). Provenance is the proxy
+    secret alone — these tests pin the corrected contract."""
+
+    def test_secret_and_subscription_without_key_granted(self):
+        path = _first_route("/api/mf/05")
+        r = client.get(path, headers={
+            "X-RapidAPI-Proxy-Secret": _TEST_PROXY_SECRET,
+            "X-RapidAPI-Subscription": "PRO",
+        })
+        assert r.status_code == 200, r.text
+
+    def test_mega_without_key_verified_path(self):
+        r = client.post("/api/mf/03/cart_checkout", params={"p": 82843}, headers={
+            "X-RapidAPI-Proxy-Secret": "wrong-secret",
+            "X-RapidAPI-Subscription": "MEGA",
+        })
+        assert r.status_code == 403
+        assert r.json()["auth_path"] == "rapidapi_unverified"
+
+    def test_subscription_only_is_unverified_not_native(self):
+        r = client.post("/api/mf/03/cart_checkout", params={"p": 82843}, headers={
+            "X-RapidAPI-Subscription": "MEGA",
+        })
+        assert r.status_code == 403
+        assert r.json()["auth_path"] == "rapidapi_unverified"
