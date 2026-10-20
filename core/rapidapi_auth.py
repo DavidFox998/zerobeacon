@@ -102,16 +102,22 @@ def verify_rapidapi_request(
                           or error responses.
 
     Verification rules (fail closed in every edge case):
-    1. No X-RapidAPI-Key header → not a RapidAPI request; return (None, "not_rapidapi").
-    2. RAPIDAPI_PROXY_SECRET env var not set → RapidAPI path disabled; return (None, reason).
-    3. X-RapidAPI-Proxy-Secret absent or doesn't match configured secret
+    1. RAPIDAPI_PROXY_SECRET env var not set → RapidAPI path disabled; return (None, reason).
+    2. X-RapidAPI-Proxy-Secret absent → not a gateway-proven request; return (None, reason).
+    3. X-RapidAPI-Proxy-Secret doesn't match a configured secret
        (constant-time comparison) → forged / gateway-bypassed request; return (None, reason).
     4. All checks pass → return (tier, "ok") where tier comes from the
        subscription plan (defaulting to "free" for unknown plans).
-    """
-    if not x_rapidapi_key:
-        return None, "not_rapidapi"
 
+    The consumer's X-RapidAPI-Key plays NO part in verification: the
+    RapidAPI gateway does not forward it to the origin (it is the
+    subscriber's credential for the gateway, not for us — confirmed
+    2026-10-19 by a genuine consumer call arriving with no key header,
+    auth_path 'native'). Provenance is the proxy secret alone; trusting
+    the subscription header only after the secret matches is what keeps
+    this fail-closed. The key parameter is kept for signature
+    compatibility with existing callers.
+    """
     if not _proxy_secret_configured():
         return None, (
             "RAPIDAPI_PROXY_SECRET is not configured on this server; "
