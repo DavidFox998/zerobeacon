@@ -1,0 +1,23 @@
+{
+  "registry_id": "anchor-demo-registry",
+  "issued_at": "2026-10-21T05:18:19Z",
+  "entries": [
+    {
+      "address": "/api/mf/03/cart_checkout",
+      "status": "active",
+      "tool": "cart_checkout"
+    },
+    {
+      "address": "/api/mf/03/delivery_final_proof",
+      "status": "active",
+      "tool": "delivery_final_proof"
+    },
+    {
+      "address": "/api/mf/03/dispute_resolve",
+      "status": "active",
+      "tool": "dispute_resolve"
+    }
+  ],
+  "public_key": "8dcb5447b133fb181d2f634f8d7da04492a0d2f29106026d0018e2418a063f9b",
+  "signature": "2cf998f55f33296ca6904fd7a4e6658f899926f5fff5b86831763ac049e956ba9637974496ec3c4c219b5ea97a5e77c341f2eca497842573f242a30e26fe3e08"
+}

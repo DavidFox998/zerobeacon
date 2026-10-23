@@ -20,6 +20,7 @@ from core.rapidapi_auth import verify_rapidapi_request, RAPIDAPI_SUBSCRIPTION_TI
 install_redaction_filter()
 
 from routers import shopify_app
+from routers import trust_harness
 from routers import zerobeacon_mf_affiliate_checkout as affiliate_checkout
 from routers import (
     zerobeacon_mf_01_050_b1a_trust      as m01,
@@ -130,6 +131,15 @@ for mod, prefix, tag, min_tier in ROUTERS:
             mod.router, prefix=prefix, tags=[tag],
             dependencies=[Depends(require_tier(min_tier))],
         )
+
+# Trust harness sits outside ROUTERS so tools/list and /health stay
+# 1003 / 1052 / 21. The status page is public. The module calls are
+# enterprise, same X-API-Key gate as the paid catalogue.
+app.include_router(trust_harness.public_router)
+app.include_router(
+    trust_harness.router,
+    dependencies=[Depends(require_tier("enterprise_1000"))],
+)
 
 
 # ── Webhook alert helper ──────────────────────────────────────────────────────

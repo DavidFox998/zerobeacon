@@ -1,0 +1,1 @@
+{"ts": "2026-10-21T04:25:38Z", "name": "grantline", "transport": "stdio", "reachable": true, "protocolVersion": "2025-11-25", "serverInfo": {"name": "grantline", "version": "1.0.0"}, "tool_count": 3, "tools": ["proxy_call", "check_grant", "list_my_grants"], "fingerprint": "33f6dfec2df41454b6544613babbf28efc031741e1c3422636fefd16a5a8da9c", "latency_ms": 69, "error": null}

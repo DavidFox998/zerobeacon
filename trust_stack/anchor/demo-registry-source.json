@@ -1,0 +1,1 @@
+{"entries":[{"address":"/api/mf/03/cart_checkout","status":"active","tool":"cart_checkout"},{"address":"/api/mf/03/delivery_final_proof","status":"active","tool":"delivery_final_proof"},{"address":"/api/mf/03/dispute_resolve","status":"active","tool":"dispute_resolve"}],"issued_at":"2026-10-21T05:18:19Z","registry_id":"anchor-demo-registry"}
