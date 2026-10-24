@@ -61,7 +61,7 @@ tools, 21 routers):
 ### Surfaces
 
 - REST: `/api/trust/{apathy, proven, anchor, receipts, flow}`
-- MCP: `POST /api/trust/mcp` — 9 tools (the composed flow and the
+- MCP: `POST /api/trust/mcp` — 11 tools (the composed flow and the
   module calls an agent needs)
 - Public: `GET /trust`
 
@@ -79,11 +79,11 @@ the full description and self-verification checks.
 
 - Pass path, tamper path, tier gate, and catalogue invariance were
   independently probed at acceptance (2026-10-23).
-- Two items are mid-build and disclosed, not smoothed over:
-  **Receipts currently answers REST only** — its MCP tools are in
-  build, so step 4 of the evaluation path runs over REST until
-  that lands; and **Anchor certificates currently resolve against
-  a demonstration registry** — live issuance is in build. The
-  certificate format and verification behavior are as described;
-  what changes when the builds land is where the record lives,
-  not what a judge can check.
+- One item remains mid-build and is disclosed, not smoothed
+  over: **Anchor certificates currently resolve against a
+  demonstration registry** — live issuance is in build. Receipts
+  answers over both REST and MCP (closed 2026-10-24), so step 4
+  of the evaluation path runs in whichever protocol the rest of
+  the evaluation used. The certificate format and verification
+  behavior are as described; what changes when the Anchor build
+  lands is where the record lives, not what a judge can check.
