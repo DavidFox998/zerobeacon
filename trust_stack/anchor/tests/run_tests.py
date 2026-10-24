@@ -144,11 +144,16 @@ def test_registry() -> None:
     check("R illegal status detected", not st["ok"], st["detail"])
 
     # Round-trip: re-signing the hand-authored source reproduces a
-    # registry that verifies.
+    # registry that verifies. The signing key is ephemeral: a fresh
+    # receipts.Keypair over random bytes, written only to a temp file
+    # (0600) for the CLI and deleted with it. DEMO-KEY-not-production.json
+    # stays withheld and is not read.
     with tempfile.TemporaryDirectory() as tmp:
         out_path = os.path.join(tmp, "roundtrip.json")
+        key_path = os.path.join(tmp, "ephemeral-key.json")
+        anchor.receipts_mod.Keypair.load_or_create(key_path)
         code, _ = run_cli("sign-registry", SOURCE_JSON,
-                          "--key", DEMO_KEY, "--out", out_path)
+                          "--key", key_path, "--out", out_path)
         ok = code == 0
         if ok:
             with open(out_path, "r", encoding="utf-8") as fh:
