@@ -31,6 +31,10 @@ reports `tools: 1052, routers: 21`, and an MCP `tools/list` returns
 the 1,003 callable operations. The server negotiates MCP protocol
 revisions 2024-11-05 through 2025-11-25.
 
+ZeroBeacon as a toolset was designed to be used by everyone,
+millions of times a day. That is the mission of ZeroBeacon.
+That is the definition of an economy in Amplum.
+
 Router blocks include:
 
 - **Market Router** — market data and routing endpoints
