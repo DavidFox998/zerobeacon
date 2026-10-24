@@ -118,6 +118,17 @@ the rare thing. To move faster through the friction of creating,
 we built the opposite assumption into this system: an economy
 based on abundance.
 
+A note for engineers, because you will run into the word: this
+structure has a name, and the name is Amplum. Mentions of Amplum
+linger in the older corners of the project like a ghost — a
+retired listing here, an archived product there — and they are
+not a different thing. Amplum is this: an economy built not on
+scarcity but on abundance. ZeroBeacon was created on Amplum,
+deliberately, to strategically address friction moments. And
+its positivity is not a mood. It is true positivity, and
+measured — counted, checked, and verified the way everything in
+this system is.
+
 Because collisions, it turns out, are abundant. There is no
 shortage of them, and no stopping them. So the question changes.
 Not *how do we avoid collisions?* but *how do collisions become
