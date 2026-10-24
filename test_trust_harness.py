@@ -59,6 +59,7 @@ def isolated(tmp_path, monkeypatch):
     harness._CHAIN = None
     harness._BUNDLE_PATH = None
     monkeypatch.setenv("TRUST_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("ANCHOR_SIGNING_SECRET", raising=False)
     yield
     harness._CHAIN = None
     harness._BUNDLE_PATH = None
@@ -293,6 +294,185 @@ def test_tamper_path_names_the_failed_check_and_issues_no_certificate(tmp_path):
     assert body["receipt"]["result_status"].startswith("refusal:sorry_count")
     assert body["receipt_verifies"] is True
     assert "ISSUED" not in response.text
+
+
+# -- Path B: live issuance --------------------------------------------------
+# The test secret is generated per run and only ever placed in the process
+# environment. No key material is written into this file.
+
+
+def _live_file(tmp_path: Path) -> Path:
+    return tmp_path / "anchor-live-registry.json"
+
+
+def _pass_flow(key: str, repo: Path, address: str = "/api/mf/03/cart_checkout"):
+    proposal = _proposal(repo, _PASS_MANIFEST)
+    proposal["address"] = address
+    response = client.post("/api/trust/flow", headers=_headers(key), json=proposal)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def _tamper_flow(key: str, repo: Path):
+    response = client.post("/api/trust/flow", headers=_headers(key),
+                           json=_proposal(repo, _PASS_MANIFEST))
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_live_first_pass_issues_and_verifies(tmp_path, monkeypatch):
+    secret = os.urandom(32).hex()
+    monkeypatch.setenv("ANCHOR_SIGNING_SECRET", secret)
+    key = _issue()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _tree(repo, _PASS_LEAN)
+    assert not _live_file(tmp_path).exists()
+
+    body = _pass_flow(key, repo)
+    assert body["ok"] is True
+    assert body["certificate"]["verdict"] == "ISSUED"
+    assert body["certificate"]["registry_source"] == "live"
+    assert body["registry_source"] == "live"
+    assert body["live_issuance"] == "issued"
+    assert body["live_registry"]["entries"] == 1
+    assert body["live_registry"]["verifies"] is True
+    assert secret not in json.dumps(body)
+
+    doc = json.loads(_live_file(tmp_path).read_text())
+    assert doc["registry_id"] == "anchor-live-registry"
+    assert doc["entries"] == [{
+        "address": "/api/mf/03/cart_checkout",
+        "tool": "cart_checkout",
+        "status": "active",
+    }]
+    assert harness.anchor.verify_registry(doc)["ok"] is True
+    assert doc["public_key"] == harness.receipts.Keypair(bytes.fromhex(secret)).public_hex
+
+    second = _pass_flow(key, repo, "/api/mf/03/dispute_resolve")
+    assert second["live_issuance"] == "issued"
+    doc = json.loads(_live_file(tmp_path).read_text())
+    assert len(doc["entries"]) == 2
+    assert harness.anchor.verify_registry(doc)["ok"] is True
+
+
+def test_live_repeat_pass_is_idempotent(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANCHOR_SIGNING_SECRET", os.urandom(32).hex())
+    key = _issue()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _tree(repo, _PASS_LEAN)
+    assert _pass_flow(key, repo)["live_issuance"] == "issued"
+    before = _live_file(tmp_path).read_bytes()
+
+    again = _pass_flow(key, repo)
+    assert again["ok"] is True
+    assert again["certificate"]["verdict"] == "ISSUED"
+    assert again["certificate"]["registry_source"] == "live"
+    assert again["live_issuance"] == "already_issued"
+    assert again["receipt"]["result_status"] == "certificate"
+    assert again["receipt_verifies"] is True
+    assert _live_file(tmp_path).read_bytes() == before
+    doc = json.loads(before)
+    assert len(doc["entries"]) == 1
+    assert harness.anchor.verify_registry(doc)["ok"] is True
+
+
+def test_live_refusal_writes_nothing(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANCHOR_SIGNING_SECRET", os.urandom(32).hex())
+    key = _issue()
+    good = tmp_path / "good"
+    good.mkdir()
+    _tree(good, _PASS_LEAN)
+    bad = tmp_path / "bad"
+    bad.mkdir()
+    _tree(bad, "theorem gap : True := by\n  sorry\n")
+
+    refused = _tamper_flow(key, bad)
+    assert refused["ok"] is False and refused["certificate"] is None
+    assert refused["live_issuance"] == "not_issued"
+    assert not _live_file(tmp_path).exists()
+
+    assert _pass_flow(key, good)["live_issuance"] == "issued"
+    before = _live_file(tmp_path).read_bytes()
+    refused = _tamper_flow(key, bad)
+    assert refused["ok"] is False
+    assert refused["live_issuance"] == "not_issued"
+    assert refused["live_registry"]["entries"] == 1
+    assert _live_file(tmp_path).read_bytes() == before
+
+    unissued = _pass_flow(key, good, "/api/mf/03/never_issued")
+    assert unissued["ok"] is False
+    assert _live_file(tmp_path).read_bytes() == before
+
+
+def test_live_unconfigured_falls_back_to_demo(tmp_path):
+    key = _issue()
+    _tree(tmp_path, _PASS_LEAN)
+    body = _pass_flow(key, tmp_path)
+    assert body["ok"] is True
+    assert body["certificate"]["verdict"] == "ISSUED"
+    assert body["certificate"]["registry_id"] == "anchor-demo-registry"
+    assert body["certificate"]["registry_source"] == "demo"
+    assert body["live_issuance"] == "unconfigured"
+    assert "ANCHOR_SIGNING_SECRET is not set" in body["live_issuance_detail"]
+    assert body["live_registry"]["configured"] is False
+    assert not _live_file(tmp_path).exists()
+
+    rest = client.post("/api/trust/anchor/registry", headers=_headers(key), json={}).json()
+    assert rest["registry_source"] == "demo"
+    assert rest["registry_id"] == "anchor-demo-registry"
+    assert rest["live"]["registry_source"] == "live"
+    assert rest["live"]["configured"] is False
+
+
+def test_live_malformed_secret_is_unconfigured_and_not_echoed(tmp_path, monkeypatch):
+    malformed = "not-hex-" + "z" * 56
+    monkeypatch.setenv("ANCHOR_SIGNING_SECRET", malformed)
+    key = _issue()
+    _tree(tmp_path, _PASS_LEAN)
+    response = client.post("/api/trust/flow", headers=_headers(key),
+                           json=_proposal(tmp_path, _PASS_MANIFEST))
+    body = response.json()
+    assert body["certificate"]["registry_source"] == "demo"
+    assert body["live_issuance"] == "unconfigured"
+    assert "malformed" in body["live_issuance_detail"]
+    assert malformed not in response.text
+    assert not _live_file(tmp_path).exists()
+
+
+def test_registry_info_reports_demo_and_live(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANCHOR_SIGNING_SECRET", os.urandom(32).hex())
+    key = _issue()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _tree(repo, _PASS_LEAN)
+    _pass_flow(key, repo)
+    live_doc = json.loads(_live_file(tmp_path).read_text())
+
+    rest = client.post("/api/trust/anchor/registry", headers=_headers(key), json={}).json()
+    assert rest["registry_source"] == "demo" and rest["entries"] == 3
+    assert rest["live"]["configured"] is True
+    assert rest["live"]["entries"] == 1
+    assert rest["live"]["verifies"] is True
+    assert rest["live"]["public_key"] == live_doc["public_key"]
+    assert rest["live"]["digest"] == harness.anchor.registry_digest(live_doc)
+
+    mcp = client.post("/api/trust/mcp", headers=_headers(key), json={
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {"name": "registry_info", "arguments": {}},
+    }).json()["result"]
+    info = json.loads(mcp["content"][0]["text"])
+    assert info["registry_source"] == "demo"
+    assert info["registry_id"] == "anchor-demo-registry"
+    assert info["live"]["entries"] == 1 and info["live"]["verifies"] is True
+
+    # Demo resolution is unchanged by live issuance.
+    resolved = client.post("/api/trust/anchor/verify", headers=_headers(key), json={
+        "address": "/api/mf/03/cart_checkout",
+    }).json()
+    assert resolved["registry_id"] == "anchor-demo-registry"
+    assert resolved["resolution"]["verdict"] == "ISSUED"
 
 
 def test_catalogue_counts_unchanged():
