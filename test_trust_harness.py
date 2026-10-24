@@ -2,9 +2,11 @@
 
 Pass path returns a certificate and a receipt. Tamper path names the
 failed check and returns no certificate. Catalogue counts stay
-1003 / 1052 / 21. Harness tools are counted on their own endpoint.
+1003 / 1052 / 21. Harness tools (11, receipts included) are counted on
+their own endpoint.
 """
 
+import json
 import os
 import textwrap
 from pathlib import Path
@@ -109,7 +111,9 @@ def test_showroom_page_names_the_flow():
     assert "audit_repo" in text
     assert "get_facts" in text
     assert "verify_address" in text
-    assert "no MCP server" in text
+    assert "append_receipt" in text
+    assert "verify_receipts" in text
+    assert "no MCP server" not in text
 
 
 def test_harness_requires_enterprise_key():
@@ -162,9 +166,74 @@ def test_module_endpoints_and_mcp_list(tmp_path):
         "audit_repo", "check_manifest", "verify_ref",
         "probe_server", "get_facts", "check_drift",
         "parse_address", "verify_address", "registry_info",
+        "append_receipt", "verify_receipts",
     ]
-    assert "receipts" not in " ".join(names)
-    assert listed.json()["result"]["receipts_mcp_gap"]
+    assert len(names) == 11
+    assert "receipts_mcp_gap" not in listed.json()["result"]
+
+    init = client.post("/api/trust/mcp", headers=headers, json={
+        "jsonrpc": "2.0", "id": 2, "method": "initialize",
+    })
+    assert "receipts_mcp_gap" not in init.json()["result"]
+    assert "receipts_mcp" not in init.json()["result"]
+    assert not hasattr(harness, "RECEIPTS_MCP_GAP")
+
+
+def test_receipts_over_mcp_round_trip():
+    key = _issue()
+    headers = _headers(key)
+    appended = client.post("/api/trust/mcp", headers=headers, json={
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {"name": "append_receipt", "arguments": {
+            "actor": "acceptance-mcp",
+            "action": {"method": "POST", "host": "test", "path": "/api/trust/mcp"},
+            "result_status": "recorded",
+        }},
+    })
+    assert appended.status_code == 200, appended.text
+    result = appended.json()["result"]
+    assert result["isError"] is False
+    payload = json.loads(result["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["bundle"]["count"] == 1
+
+    # Same chain as REST: a REST append lands after the MCP one.
+    rest = client.post("/api/trust/receipts/append", headers=headers, json={
+        "actor": "acceptance-rest",
+        "action": {"method": "POST", "host": "test", "path": "/api/trust/receipts/append"},
+        "result_status": "recorded",
+    })
+    bundle = rest.json()["bundle"]
+    assert bundle["count"] == 2
+    assert bundle["receipts"][0]["hash"] == payload["receipt"]["hash"]
+
+    verified = client.post("/api/trust/mcp", headers=headers, json={
+        "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+        "params": {"name": "verify_receipts", "arguments": {"bundle": bundle}},
+    })
+    assert json.loads(verified.json()["result"]["content"][0]["text"]) == {"ok": True, "detail": 2}
+
+    bundle["receipts"][0]["result_status"] = "forged"
+    tampered = client.post("/api/trust/mcp", headers=headers, json={
+        "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+        "params": {"name": "verify_receipts", "arguments": {"bundle": bundle}},
+    })
+    body = json.loads(tampered.json()["result"]["content"][0]["text"])
+    assert body["ok"] is False
+    assert body["detail"][0] == 0
+
+
+def test_receipts_mcp_requires_enterprise_key():
+    call = {
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {"name": "verify_receipts", "arguments": {"bundle": {}}},
+    }
+    response = client.post("/api/trust/mcp", json=call)
+    assert response.status_code == 403
+    assert response.json()["error"] == "tier_required"
+    low = client.post("/api/trust/mcp", headers=_headers(_issue("pro_100")), json=call)
+    assert low.status_code == 403
+    assert low.json()["error"] == "tier_required"
 
 
 def test_pass_path_returns_certificate_and_receipt(tmp_path):
