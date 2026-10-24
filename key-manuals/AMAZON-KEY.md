@@ -35,7 +35,9 @@ Router blocks include:
 
 - **Market Router** — market data and routing endpoints
 - **Math Engine** — computation endpoints
-- **Amplum Everyday** — everyday-utility endpoints
+- **Amplum Everyday** — everyday-utility endpoints (the Amplum
+  name itself — what it is, and why it lingers — is explained in
+  *The Friction Moments*, below)
 - **Brain Router** — enterprise reasoning endpoints (MF-17–MF-21)
 
 ### Connect over MCP
@@ -128,6 +130,21 @@ deliberately, to strategically address friction moments. And
 its positivity is not a mood. It is true positivity, and
 measured — counted, checked, and verified the way everything in
 this system is.
+
+The anchors hold because they are rooted in invariants:
+quantities that do not move when everything around them does.
+Predicted, anticipated, reliable — that is what an invariant
+buys you.
+
+When we built this, we had a saying: *measured, not minted.*
+ZeroBeacon does not print a certificate that merely declares
+"the package arrived." That would be minting — a claim stamped
+into existence. What it does instead is measure: check the
+thing itself, by an independent method, and report what the
+measurement says. Its positivity is measured positivity, in the
+lineage of Arakelov positivity, where positivity is never
+asserted, only established. That mathematics is the
+cornerstone the whole system is built on.
 
 Because collisions, it turns out, are abundant. There is no
 shortage of them, and no stopping them. So the question changes.
