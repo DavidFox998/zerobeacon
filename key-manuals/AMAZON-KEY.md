@@ -68,7 +68,7 @@ the **Trust Stack harness** — a verification layer for agent work:
   recorded
 
 Surfaces: REST under `/api/trust/{apathy, proven, anchor,
-receipts, flow}`, MCP at `POST /api/trust/mcp` (9 tools), and a
+receipts, flow}`, MCP at `POST /api/trust/mcp` (11 tools), and a
 public page at `GET /trust`. All harness endpoints sit behind this
 key's tier. A well-formed proposal returns a certificate and a
 chained receipt; a proposal whose claims do not reproduce returns
@@ -79,8 +79,8 @@ a refusal naming the failed check, and no certificate is issued.
 - The catalogue and harness figures above are the deployed state,
   verified by independent probes on 2026-10-23 (`/health`
   unchanged before and after the harness deploy).
-- Two harness items are mid-build and disclosed here rather than
-  smoothed over: **Receipts currently answers REST only** (its MCP
-  tools are in build), and **Anchor certificates currently resolve
+- One harness item remains mid-build and is disclosed here rather
+  than smoothed over: **Anchor certificates currently resolve
   against a demonstration registry** (live issuance is in build).
+  Receipts answers over both REST and MCP (closed 2026-10-24).
   Neither affects the toolset, which is complete as described.
