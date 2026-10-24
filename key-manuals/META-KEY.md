@@ -79,10 +79,14 @@ and self-verification checks.
   (2026-10-23): pass path issues a certificate with a chained
   receipt; tamper path refuses, naming the failed check;
   catalogue counts identical before and after.
-- One item remains mid-build and is disclosed: **Anchor
-  certificates currently resolve against a demonstration
-  registry** (live issuance is in build). Receipts answers over
-  both REST and MCP (closed 2026-10-24) — an MCP-only client can
-  now fetch and verify the receipt chain in-protocol. The Anchor
-  item is sequenced ahead of any general client opening; the
-  keyed judge lanes operate meanwhile.
+- Both build items are closed. Receipts answers over both REST
+  and MCP (closed 2026-10-24) — an MCP-only client can now fetch
+  and verify the receipt chain in-protocol. **Anchor live
+  issuance is built and deployed (2026-10-24)**: a passing flow
+  records its certificate in a persisted live registry signed
+  under a server-side key; re-certification is idempotent, never
+  duplicated. Production issuance activates when the signing
+  secret is provisioned on Fly; until then the service
+  self-reports live issuance as unconfigured and resolves against
+  the demonstration registry, exactly as before. The keyed judge
+  lanes operate meanwhile.
