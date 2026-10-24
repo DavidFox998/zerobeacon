@@ -103,6 +103,18 @@ mathematical gaps, the places where a proof actually stops. That
 discrimination, small as it sounds, is the difference between an
 audit you can trust and an alarm that cries all day.
 
+That way of reading did not stay in the Lean world. Apathy was
+adapted into the trust layer — it stands first among the harness
+modules above, and more than that, its ideology is the basis
+the whole harness is built on. Every module asks Apathy's
+question in a new place: is this claim a true sorry, or only a
+mention of one? Proven re-checks the claim live instead of
+trusting how it reads. Anchor certifies only what measured
+true. Receipts write down which was which, so the
+discrimination itself can be audited later. The harness is
+Apathy, generalized: separate the true gaps from the noise,
+and believe only what was measured.
+
 But the largest share of friction has a different source:
 secrets. Moving a secret from where it lives to where it is
 needed — and keeping it a secret the whole way, across machines
