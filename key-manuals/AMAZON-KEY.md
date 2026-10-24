@@ -183,8 +183,13 @@ are not fought at all. They are made load-bearing.
 - The catalogue and harness figures above are the deployed state,
   verified by independent probes on 2026-10-23 (`/health`
   unchanged before and after the harness deploy).
-- One harness item remains mid-build and is disclosed here rather
-  than smoothed over: **Anchor certificates currently resolve
-  against a demonstration registry** (live issuance is in build).
+- Both harness items that were mid-build are now closed.
   Receipts answers over both REST and MCP (closed 2026-10-24).
-  Neither affects the toolset, which is complete as described.
+  **Anchor live issuance is built and deployed (2026-10-24)**: a
+  passing flow records its certificate in a persisted live
+  registry signed under a server-side key; re-certification is
+  idempotent. Production issuance activates when the signing
+  secret is provisioned on Fly — until then the service
+  self-reports live issuance as unconfigured and resolves against
+  the demonstration registry, exactly as before. Neither affects
+  the toolset, which is complete as described.
