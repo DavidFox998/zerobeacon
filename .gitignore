@@ -1,0 +1,3 @@
+# Lane manuals are injected at deploy time from repository secrets
+# (see .github/workflows/main.yml) and must never be committed.
+lane-manuals/

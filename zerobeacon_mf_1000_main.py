@@ -3,6 +3,7 @@ from tool_schemas import TOOL_SCHEMAS
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse, Response
 import time, os, stripe, asyncio, json, urllib.request, urllib.error, urllib.parse, hmac, hashlib
+from pathlib import Path
 
 from core.beacon import (beacon_payload, D, BEACON, GENESIS_P,
                          TIERS, PRICING_SUMMARY, PAYPAL_ME,
@@ -2032,6 +2033,94 @@ async def api_admin_keys_revoke(request: Request):
 
     revoked = keystore.revoke_by_email(email)
     return {"ok": True, "email": email, "revoked": revoked}
+
+
+# ── Lane manuals ──────────────────────────────────────────────────────────────
+# Each judging lane's manual is served only to that lane's own key. The key is
+# the lane selector: key -> keystore record -> label (the record's email field)
+# -> lane, by exact match. There is no lane parameter, so one lane's key can
+# never ask for another lane's manual. Access is expiry-aware: an expired key
+# confers only free and is refused. Manual files are not in git; the deploy
+# workflow writes them into lane-manuals/ from repository secrets. A missing
+# file fails closed with 503 manual_not_provisioned. Sits outside ROUTERS, like
+# the admin endpoints, so the catalogue and /health counts are unchanged.
+
+LANE_MANUAL_DIR = Path(__file__).resolve().parent / "lane-manuals"
+LANE_BY_LABEL = {
+    "amazon-judges@zerobeacon.ai": "amazon",
+    "paypal-judges@zerobeacon.ai": "paypal",
+    "meta-judges@zerobeacon.ai":   "meta",
+}
+_LANE_TIER = "enterprise_1000"
+
+
+def _lane_refusal(status_code: int, error: str, message: str) -> JSONResponse:
+    return JSONResponse(
+        {"ok": False, "error": error, "message": message},
+        status_code=status_code,
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/api/lane-manual")
+def api_lane_manual(request: Request):
+    """Return the calling lane's manual as text/markdown.
+
+    Header: X-API-Key. 200 only when the key's label maps to a lane and the
+    key's effective tier is enterprise_1000. Refusals: 403 key_required,
+    invalid_key, not_a_lane_key, key_expired, tier_required; 503
+    manual_not_provisioned when this deployment has no file for the lane.
+    """
+    api_key = (request.headers.get("x-api-key") or "").strip()
+    if not api_key:
+        return _lane_refusal(403, "key_required",
+                             "Send your lane key in the X-API-Key header.")
+
+    record = keystore.lookup(api_key)
+    if record is None:
+        return _lane_refusal(403, "invalid_key", "Unknown API key.")
+
+    lane = LANE_BY_LABEL.get(record.get("email", ""))
+    if lane is None:
+        return _lane_refusal(
+            403, "not_a_lane_key",
+            "Lane manuals are delivered only to judging-lane keys; "
+            "this key is not issued to a lane.")
+
+    expires_at = record.get("expires_at")
+    if expires_at and int(time.time()) >= int(expires_at):
+        return _lane_refusal(
+            403, "key_expired",
+            "This lane key has expired; manual access ended with it.")
+
+    if keystore.rank_of(keystore.tier_of(api_key)) < keystore.rank_of(_LANE_TIER):
+        return _lane_refusal(
+            403, "tier_required",
+            f"Lane manuals require an active {_LANE_TIER} lane key.")
+
+    path = Path(LANE_MANUAL_DIR) / f"{lane}.md"
+    try:
+        content = path.read_text(encoding="utf-8")
+    except (FileNotFoundError, IsADirectoryError, NotADirectoryError):
+        content = ""
+    except OSError as exc:
+        print(f"[lane-manual] WARNING: {lane} manual unreadable: "
+              f"{type(exc).__name__}", flush=True)
+        content = ""
+    if not content.strip():
+        print(f"[lane-manual] WARNING: no {lane} manual in this deployment "
+              f"(lane-manuals/{lane}.md missing or empty; set the "
+              f"MANUAL_{lane.upper()} repository secret and redeploy).",
+              flush=True)
+        return _lane_refusal(
+            503, "manual_not_provisioned",
+            "This lane's manual is not provisioned in this deployment.")
+
+    return Response(
+        content=content,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.post("/api/key/resend")

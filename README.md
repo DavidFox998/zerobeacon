@@ -57,8 +57,13 @@ Its place in the platform: the harness lives **alongside** the
 toolset, not inside it. It is hosted outside the catalogue's
 routers, so the 1,052 tools work exactly as before, and it uses
 the same API keys and tiers. It is reachable over REST and MCP
-under `/api/trust/`, with a public page at `/trust`. Per-key
-manuals live in `key-manuals/`.
+under `/api/trust/`, with a public page at `/trust`.
+
+Each judging lane's manual is delivered with its key, not published
+here: `GET /api/lane-manual` with the lane's `X-API-Key` returns that
+lane's manual, and only that lane's. The key selects the lane, so no
+key can read another lane's manual, and access ends when the key
+expires. See `key-manuals/README.md`.
 
 Two further architecture implementations from the same programme
 are not hosted endpoints, but can augment the architecture of

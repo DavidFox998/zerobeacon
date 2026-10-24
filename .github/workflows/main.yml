@@ -44,6 +44,31 @@ jobs:
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
+      # Lane manuals are not in git. Write each one from its repository secret
+      # into lane-manuals/ so the Dockerfile's COPY . . carries it into the
+      # image, where GET /api/lane-manual serves it to that lane's key only.
+      # A missing secret is a loud warning, never a failed deploy: that lane's
+      # endpoint answers 503 manual_not_provisioned until the secret is set.
+      # Content is never echoed; only the byte count is logged.
+      - name: Provision lane manuals from repository secrets
+        shell: bash
+        env:
+          MANUAL_AMAZON: ${{ secrets.MANUAL_AMAZON }}
+          MANUAL_PAYPAL: ${{ secrets.MANUAL_PAYPAL }}
+          MANUAL_META: ${{ secrets.MANUAL_META }}
+        run: |
+          mkdir -p lane-manuals
+          for lane in amazon paypal meta; do
+            var="MANUAL_${lane^^}"
+            content="${!var}"
+            if [ -z "${content//[[:space:]]/}" ]; then
+              echo "::warning title=Lane manual not provisioned::${var} is empty or unset; lane-manuals/${lane}.md was not written. GET /api/lane-manual will answer 503 manual_not_provisioned for the ${lane} lane until the secret is set and the app is redeployed."
+              continue
+            fi
+            printf '%s\n' "$content" > "lane-manuals/${lane}.md"
+            echo "lane-manuals/${lane}.md written ($(wc -c < "lane-manuals/${lane}.md") bytes)"
+          done
+
       - name: Deploy to Fly.io
         run: flyctl deploy -a zerobeacon-mf-1000 --remote-only --strategy immediate
         env:
