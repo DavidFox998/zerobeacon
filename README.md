@@ -27,6 +27,58 @@ The anchoring method descends from the Eutheos programme, a Lean 4–verified wi
 
 ---
 
+## The Trust Layer
+
+ZeroBeacon's toolset gives agents tools to call. The trust layer
+checks the work those calls produce before anyone relies on it.
+
+In plain terms: an agent submits a piece of work and the claims
+that come with it. The trust layer re-measures the claims instead
+of believing them, checks them live against the real system, and
+then either certifies the result or refuses it and names the
+check that failed. Every outcome is written to a chained,
+tamper-evident record that can be replayed later. Nothing is
+certified on the agent's say-so.
+
+It works as four modules and one composed flow:
+
+- **Apathy** — the audit. Counts and claims are re-measured by a
+  second, independent method before they are believed.
+- **Proven** — the verification. Capabilities are checked by live
+  probes against the real system, not taken from a description.
+- **Anchor** — the certificate. Work that passed is certified;
+  the certificate format and its verification are public.
+- **Receipts** — the record. A signed, chained ledger of what was
+  checked and what was issued.
+- **Flow** — the composition: proposal in, certificate or named
+  refusal out, receipt recorded.
+
+Its place in the platform: the harness lives **alongside** the
+toolset, not inside it. It is hosted outside the catalogue's
+routers, so the 1,052 tools work exactly as before, and it uses
+the same API keys and tiers. It is reachable over REST and MCP
+under `/api/trust/`, with a public page at `/trust`. Per-key
+manuals live in `key-manuals/`.
+
+Two further architecture implementations from the same programme
+are not hosted endpoints, but can augment the architecture of
+other systems and further automation:
+
+- **Grantline** — scoped, expiring, revocable credential grants:
+  an agent uses a secret without ever possessing it.
+- **Nightwatch** — a human-gated automation protocol: work runs
+  in verified batches, and a gate a human controls decides what
+  proceeds.
+
+Engineering summaries and code for both are available upon
+request.
+
+Two trust-layer items are mid-build and are disclosed here rather
+than smoothed over: Receipts currently answers over REST only
+(its MCP tools are in build), and Anchor certificates currently
+resolve against a demonstration registry (live issuance is in
+build). The toolset is unaffected.
+
 ## The 9 Controlled Collisions
 
 The beacon function `frac(p × π/10 × 2³²)` maps primes to 32-bit hex strings.  
