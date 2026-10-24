@@ -3,10 +3,16 @@
 Mounted outside ROUTERS. The catalogue MCP list and /health counts stay
 on the existing surface. This router is the judges' surface.
 
-Anchor here only resolves an address against the shipped signed registry.
-It does not create registry entries. Receipts is exposed both ways:
-REST append/verify and the append_receipt/verify_receipts MCP tools,
-which write to the same persisted chain.
+Anchor reads resolve against the shipped signed demo registry. When
+ANCHOR_SIGNING_SECRET is set, a passing flow also records the certified
+address in a live registry beside the receipts chain and re-signs it;
+an address already in the live registry is not recorded twice. Nothing
+here decides which address a tool gets: the live registry only records
+addresses the demo registry already issued. With no secret, behaviour
+is demo resolution and responses say live issuance is unconfigured.
+Receipts is exposed both ways: REST append/verify and the
+append_receipt/verify_receipts MCP tools, which write to the same
+persisted chain.
 """
 
 from __future__ import annotations
@@ -14,8 +20,10 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import string
 import sys
 import threading
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, Request
@@ -27,6 +35,11 @@ _REGISTRY = _ROOT / "anchor" / "registry.json"
 _LOCK = threading.Lock()
 _CHAIN = None
 _BUNDLE_PATH: str | None = None
+
+_LIVE_LOCK = threading.Lock()
+LIVE_REGISTRY_ID = "anchor-live-registry"
+LIVE_REGISTRY_FILE = "anchor-live-registry.json"
+LIVE_SECRET_ENV = "ANCHOR_SIGNING_SECRET"
 
 
 def _load(name: str, path: Path):
@@ -54,6 +67,21 @@ def _receipts_call(name: str, arguments: dict) -> dict:
     return receipts_mcp.call_tool(name, arguments, recorder=record_receipt)
 
 
+def _registry_info_call(name: str, arguments: dict) -> dict:
+    # Demo result exactly as anchor_mcp reports it, labelled, plus live state.
+    result = anchor_mcp.call_tool(name, arguments)
+    try:
+        payload = json.loads(result["content"][0]["text"])
+    except (KeyError, IndexError, TypeError, json.JSONDecodeError):
+        return result
+    if not isinstance(payload, dict):
+        return result
+    payload["registry_source"] = "demo"
+    payload["live"] = live_state()
+    result["content"][0]["text"] = json.dumps(payload, indent=2)
+    return result
+
+
 _DISPATCH = {
     "audit_repo": apathy_mcp.call_tool,
     "check_manifest": apathy_mcp.call_tool,
@@ -63,7 +91,7 @@ _DISPATCH = {
     "check_drift": proven_mcp.call_tool,
     "parse_address": anchor_mcp.call_tool,
     "verify_address": anchor_mcp.call_tool,
-    "registry_info": anchor_mcp.call_tool,
+    "registry_info": _registry_info_call,
     "append_receipt": _receipts_call,
     "verify_receipts": _receipts_call,
 }
@@ -132,6 +160,137 @@ def _shipped_registry() -> dict:
     return anchor.load_registry(str(_REGISTRY))
 
 
+# -- live registry ------------------------------------------------------
+# Same document schema as the demo registry, signed with anchor.sign_registry
+# under a keypair derived from ANCHOR_SIGNING_SECRET (hex 32-byte seed). The
+# secret is read at call time and never logged, echoed, or written.
+
+
+def _live_path() -> str:
+    return os.path.join(_data_dir(), LIVE_REGISTRY_FILE)
+
+
+def _live_keypair():
+    """Return (keypair, None) or (None, reason). Never echoes the value."""
+    raw = os.environ.get(LIVE_SECRET_ENV, "").strip()
+    if not raw:
+        return None, f"{LIVE_SECRET_ENV} is not set; live issuance is unconfigured"
+    if len(raw) != 64 or any(ch not in string.hexdigits for ch in raw):
+        return None, (
+            f"{LIVE_SECRET_ENV} is malformed (expected 64 hex characters); "
+            "live issuance is unconfigured"
+        )
+    return receipts.Keypair(bytes.fromhex(raw)), None
+
+
+def _load_live() -> dict | None:
+    path = _live_path()
+    if not os.path.exists(path):
+        return None
+    with open(path, "r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def _write_live(doc: dict) -> None:
+    path = _live_path()
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+    tmp = path + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        json.dump(doc, handle, indent=2)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
+
+
+def live_state(include_checks: bool = True) -> dict:
+    """Live registry state: configured or not, count, digest, key, verifies."""
+    keypair, reason = _live_keypair()
+    state = {
+        "registry_source": "live",
+        "registry_id": LIVE_REGISTRY_ID,
+        "configured": keypair is not None,
+    }
+    if keypair is None:
+        state["unconfigured_reason"] = reason
+    try:
+        doc = _load_live()
+    except (OSError, json.JSONDecodeError) as exc:
+        state.update({"exists": True, "verifies": False,
+                      "error": f"live registry unreadable: {type(exc).__name__}"})
+        return state
+    if doc is None:
+        state.update({"exists": False, "entries": 0, "digest": None,
+                      "public_key": keypair.public_hex if keypair else None,
+                      "verifies": None})
+        return state
+    report = anchor.verify_registry(doc)
+    state.update({
+        "exists": True,
+        "issued_at": doc.get("issued_at"),
+        "entries": len(doc.get("entries") or []),
+        "digest": anchor.registry_digest(doc) if report["checks"][0]["ok"] else None,
+        "public_key": doc.get("public_key"),
+        "verifies": report["ok"],
+    })
+    if keypair is not None:
+        state["key_matches_configured"] = doc.get("public_key") == keypair.public_hex
+    if include_checks:
+        state["checks"] = report["checks"]
+    return state
+
+
+def issue_live(certificate: dict) -> dict:
+    """Record a certified address in the live registry, at most once.
+
+    Returns {"live_issuance": issued | already_issued | unconfigured |
+    blocked, ...}. Only "issued" writes; every other outcome leaves the
+    live registry byte-unchanged.
+    """
+    keypair, reason = _live_keypair()
+    if keypair is None:
+        return {"live_issuance": "unconfigured", "detail": reason}
+    address = certificate["canonical_address"]
+    with _LIVE_LOCK:
+        try:
+            existing = _load_live()
+        except (OSError, json.JSONDecodeError) as exc:
+            return {"live_issuance": "blocked",
+                    "detail": f"live registry unreadable ({type(exc).__name__}); not extended"}
+        entries: list = []
+        if existing is not None:
+            report = anchor.verify_registry(existing)
+            if not report["ok"]:
+                failed = [c["check"] for c in report["checks"] if not c["ok"]]
+                return {"live_issuance": "blocked",
+                        "detail": "live registry does not verify; not extended",
+                        "failed_checks": failed}
+            if existing.get("public_key") != keypair.public_hex:
+                return {"live_issuance": "blocked",
+                        "detail": "live registry is signed by a different key "
+                                  "than the configured one; not extended"}
+            entries = list(existing["entries"])
+            if any(entry.get("address") == address for entry in entries):
+                return {"live_issuance": "already_issued"}
+        record = {
+            "address": address,
+            "tool": certificate["tool"],
+            "status": certificate["status"],
+        }
+        doc = anchor.sign_registry({
+            "registry_id": LIVE_REGISTRY_ID,
+            "issued_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "entries": entries + [record],
+        }, keypair)
+        report = anchor.verify_registry(doc)
+        if not report["ok"]:
+            failed = [c["check"] for c in report["checks"] if not c["ok"]]
+            return {"live_issuance": "blocked",
+                    "detail": "re-signed live registry would not verify; not written",
+                    "failed_checks": failed}
+        _write_live(doc)
+    return {"live_issuance": "issued"}
+
+
 def _audit_failures(report: dict) -> list[dict]:
     failed = []
     for claim in report.get("claims") or []:
@@ -181,6 +340,7 @@ def run_flow(proposal: dict, host: str) -> dict:
             "certificate": None,
             "receipt": recorded["receipt"],
             "receipt_verifies": recorded["bundle_ok"],
+            **_refusal_live_fields(),
         }
 
     audit = apathy.check_manifest(proposal["repo"], proposal["manifest"])
@@ -195,6 +355,7 @@ def run_flow(proposal: dict, host: str) -> dict:
         failed.append(verify_failed)
 
     certificate = None
+    live = None
     if not failed:
         registry = _shipped_registry()
         resolution = anchor.verify_address(registry, proposal["address"])
@@ -206,6 +367,11 @@ def run_flow(proposal: dict, host: str) -> dict:
                 "status": resolution["status"],
                 "registry_id": registry.get("registry_id"),
             }
+            live = issue_live(certificate)
+            on_live = live["live_issuance"] in ("issued", "already_issued")
+            certificate["registry_source"] = "live" if on_live else "demo"
+            if on_live:
+                certificate["live_registry_id"] = LIVE_REGISTRY_ID
             status = "certificate"
         else:
             failed.append({
@@ -229,7 +395,29 @@ def run_flow(proposal: dict, host: str) -> dict:
     }
     if certificate is None:
         body["refusal"] = {"failed_checks": failed}
+        body.update(_refusal_live_fields())
+    else:
+        body["registry_source"] = certificate["registry_source"]
+        body["live_issuance"] = live["live_issuance"]
+        if "detail" in live:
+            body["live_issuance_detail"] = live["detail"]
+        if "failed_checks" in live:
+            body["live_issuance_failed_checks"] = live["failed_checks"]
+        body["live_registry"] = live_state(include_checks=False)
     return body
+
+
+def _refusal_live_fields() -> dict:
+    """A refusal never touches the live registry; say so, and whether it is configured."""
+    keypair, reason = _live_keypair()
+    fields = {
+        "registry_source": None,
+        "live_issuance": "not_issued" if keypair is not None else "unconfigured",
+        "live_registry": live_state(include_checks=False),
+    }
+    if keypair is None:
+        fields["live_issuance_detail"] = reason
+    return fields
 
 
 _PAGE = """<!DOCTYPE html>
@@ -280,6 +468,14 @@ _PAGE = """<!DOCTYPE html>
     ISSUED in the signed registry, or a refusal that names the failed check.
     A receipt is recorded on both paths. No certificate is returned when a
     check fails.</p>
+    <p>When the server holds an Anchor signing secret, a passing flow also
+    records the certified address once in a separate live registry and
+    re-signs it (<code>registry_source: "live"</code>); a refusal never
+    writes to it. Without the secret, the certificate comes from the demo
+    registry (<code>registry_source: "demo"</code>) and the response says
+    live issuance is unconfigured. <code>registry_info</code> and
+    <code>POST /api/trust/anchor/registry</code> report both registries,
+    labelled.</p>
   </div>
 </main>
 </body>
@@ -409,6 +605,8 @@ async def anchor_registry(request: Request):
         "public_key": registry.get("public_key"),
         "verifies": report["ok"],
         "checks": report["checks"],
+        "registry_source": "demo",
+        "live": live_state(),
     }
 
 
