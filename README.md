@@ -73,11 +73,11 @@ other systems and further automation:
 Engineering summaries and code for both are available upon
 request.
 
-Two trust-layer items are mid-build and are disclosed here rather
-than smoothed over: Receipts currently answers over REST only
-(its MCP tools are in build), and Anchor certificates currently
-resolve against a demonstration registry (live issuance is in
-build). The toolset is unaffected.
+One trust-layer item remains mid-build and is disclosed here
+rather than smoothed over: Anchor certificates currently resolve
+against a demonstration registry (live issuance is in build).
+Receipts answers over both REST and MCP (closed 2026-10-24).
+The toolset is unaffected.
 
 ## The 9 Controlled Collisions
 
