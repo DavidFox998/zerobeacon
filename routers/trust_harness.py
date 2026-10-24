@@ -4,8 +4,9 @@ Mounted outside ROUTERS. The catalogue MCP list and /health counts stay
 on the existing surface. This router is the judges' surface.
 
 Anchor here only resolves an address against the shipped signed registry.
-It does not create registry entries. Receipts has no MCP server in the
-staged tree, so record is REST only.
+It does not create registry entries. Receipts is exposed both ways:
+REST append/verify and the append_receipt/verify_receipts MCP tools,
+which write to the same persisted chain.
 """
 
 from __future__ import annotations
@@ -45,6 +46,13 @@ proven = _load("proven", _ROOT / "proven" / "proven.py")
 apathy_mcp = _load("apathy_mcp", _ROOT / "apathy" / "apathy_mcp.py")
 proven_mcp = _load("proven_mcp", _ROOT / "proven" / "proven_mcp.py")
 anchor_mcp = _load("anchor_mcp", _ROOT / "anchor" / "anchor_mcp.py")
+receipts_mcp = _load("receipts_mcp", _ROOT / "receipts" / "receipts_mcp.py")
+
+
+def _receipts_call(name: str, arguments: dict) -> dict:
+    # Same chain as REST: route MCP append through record_receipt.
+    return receipts_mcp.call_tool(name, arguments, recorder=record_receipt)
+
 
 _DISPATCH = {
     "audit_repo": apathy_mcp.call_tool,
@@ -56,16 +64,11 @@ _DISPATCH = {
     "parse_address": anchor_mcp.call_tool,
     "verify_address": anchor_mcp.call_tool,
     "registry_info": anchor_mcp.call_tool,
+    "append_receipt": _receipts_call,
+    "verify_receipts": _receipts_call,
 }
 
 HARNESS_TOOL_NAMES = tuple(_DISPATCH)
-
-# Receipts ships receipts.py and no MCP server. These names are REST only.
-RECEIPTS_MCP_GAP = (
-    "receipts has no MCP server in the staged tree; "
-    "record is POST /api/trust/receipts/append and "
-    "POST /api/trust/receipts/verify"
-)
 
 public_router = APIRouter(tags=["Trust harness"])
 router = APIRouter(prefix="/api/trust", tags=["Trust harness"])
@@ -261,10 +264,10 @@ _PAGE = """<!DOCTYPE html>
       <tr><td>Apathy, audit</td><td><code>POST /api/trust/apathy/audit</code><br><code>POST /api/trust/apathy/check</code><br><code>POST /api/trust/apathy/verify-ref</code></td><td><code>audit_repo</code><br><code>check_manifest</code><br><code>verify_ref</code></td></tr>
       <tr><td>Proven, verify</td><td><code>POST /api/trust/proven/facts</code><br><code>POST /api/trust/proven/probe</code><br><code>POST /api/trust/proven/drift</code></td><td><code>get_facts</code><br><code>probe_server</code><br><code>check_drift</code></td></tr>
       <tr><td>Anchor, certificate</td><td><code>POST /api/trust/anchor/parse</code><br><code>POST /api/trust/anchor/verify</code><br><code>POST /api/trust/anchor/registry</code></td><td><code>parse_address</code><br><code>verify_address</code><br><code>registry_info</code></td></tr>
-      <tr><td>Receipts, record</td><td><code>POST /api/trust/receipts/append</code><br><code>POST /api/trust/receipts/verify</code></td><td>none — receipts ships no MCP server</td></tr>
+      <tr><td>Receipts, record</td><td><code>POST /api/trust/receipts/append</code><br><code>POST /api/trust/receipts/verify</code></td><td><code>append_receipt</code><br><code>verify_receipts</code></td></tr>
     </tbody>
   </table>
-  <p>MCP transport for the nine tools above is <code>POST /api/trust/mcp</code>
+  <p>MCP transport for the eleven tools above is <code>POST /api/trust/mcp</code>
   (JSON-RPC, protocol 2025-11-25). The catalogue <code>POST /mcp</code> list
   is unchanged.</p>
 
@@ -464,22 +467,18 @@ async def trust_mcp(request: Request):
                 "protocolVersion": "2025-11-25",
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": "zerobeacon-trust-harness", "version": "1.0.0"},
-                "receipts_mcp": None,
-                "receipts_mcp_gap": RECEIPTS_MCP_GAP,
             },
         }
     if method == "ping":
         return {"jsonrpc": "2.0", "id": mid, "result": {}}
     if method == "tools/list":
-        tools = list(apathy_mcp.TOOLS) + list(proven_mcp.TOOLS) + list(anchor_mcp.TOOLS)
-        return {
-            "jsonrpc": "2.0",
-            "id": mid,
-            "result": {
-                "tools": tools,
-                "receipts_mcp_gap": RECEIPTS_MCP_GAP,
-            },
-        }
+        tools = (
+            list(apathy_mcp.TOOLS)
+            + list(proven_mcp.TOOLS)
+            + list(anchor_mcp.TOOLS)
+            + list(receipts_mcp.TOOLS)
+        )
+        return {"jsonrpc": "2.0", "id": mid, "result": {"tools": tools}}
     if method == "tools/call":
         params = body.get("params") or {}
         name = params.get("name")
@@ -490,7 +489,7 @@ async def trust_mcp(request: Request):
                 "id": mid,
                 "error": {
                     "code": -32601,
-                    "message": f"method not found: {name}. {RECEIPTS_MCP_GAP}",
+                    "message": f"method not found: {name}",
                 },
             }
         result = call(name, params.get("arguments") or {})
