@@ -47,7 +47,7 @@ The modules, in flow order:
   (fail) → receipt recorded.
 
 Surfaces: REST under `/api/trust/{apathy, proven, anchor,
-receipts, flow}`; MCP at `POST /api/trust/mcp` (9 tools); the
+receipts, flow}`; MCP at `POST /api/trust/mcp` (11 tools); the
 harness is hosted **outside** the catalogue's routers, so the
 platform's counts are untouched by it (verify: `GET /health`).
 
@@ -79,10 +79,10 @@ and self-verification checks.
   (2026-10-23): pass path issues a certificate with a chained
   receipt; tamper path refuses, naming the failed check;
   catalogue counts identical before and after.
-- Two items are mid-build and disclosed: **Receipts currently
-  answers REST only** (MCP tools in build — an MCP-only client
-  cannot yet fetch the receipt chain in-protocol), and **Anchor
+- One item remains mid-build and is disclosed: **Anchor
   certificates currently resolve against a demonstration
-  registry** (live issuance in build). Both are sequenced ahead of
-  any general client opening; the keyed judge lanes operate
-  meanwhile.
+  registry** (live issuance is in build). Receipts answers over
+  both REST and MCP (closed 2026-10-24) — an MCP-only client can
+  now fetch and verify the receipt chain in-protocol. The Anchor
+  item is sequenced ahead of any general client opening; the
+  keyed judge lanes operate meanwhile.
