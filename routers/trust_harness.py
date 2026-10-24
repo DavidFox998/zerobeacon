@@ -17,6 +17,7 @@ persisted chain.
 
 from __future__ import annotations
 
+import base64
 import importlib.util
 import json
 import os
@@ -24,6 +25,9 @@ import string
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from fastapi import APIRouter, Request
@@ -698,4 +702,307 @@ async def trust_mcp(request: Request):
         "jsonrpc": "2.0",
         "id": mid,
         "error": {"code": -32601, "message": f"method not found: {method}"},
+    }
+
+
+# -- PayPal gate --------------------------------------------------------
+# The payment is the gated action. A purchase proposal runs the composed
+# flow first (audit + verify + certificate); only a passing flow may
+# create a PayPal order, and capture records the executed payment in
+# Receipts. A refused flow never reaches PayPal: no order is created.
+# Credentials are read from the environment at call time and are never
+# logged, echoed, or written anywhere.
+
+PAYPAL_SANDBOX_BASE = "https://api-m.sandbox.paypal.com"
+PAYPAL_LIVE_BASE = "https://api-m.paypal.com"
+PAYPAL_CAPTURED_FILE = "paypal-captured-orders.json"
+
+
+def _paypal_config() -> dict:
+    client_id = os.environ.get("PAYPAL_CLIENT_ID", "").strip()
+    client_secret = os.environ.get("PAYPAL_CLIENT_SECRET", "").strip()
+    env = os.environ.get("PAYPAL_ENV", "").strip().lower() or "sandbox"
+    return {
+        "configured": bool(client_id and client_secret),
+        "environment": env,
+        "base": PAYPAL_LIVE_BASE if env == "live" else PAYPAL_SANDBOX_BASE,
+        "client_id": client_id,
+        "client_secret": client_secret,
+    }
+
+
+def _paypal_http(method: str, url: str, headers: dict, body: bytes | None) -> tuple[int, dict]:
+    """One HTTP round trip to PayPal. Module-level so tests can replace it."""
+    req = urllib.request.Request(url, data=body, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = resp.read().decode("utf-8")
+            return resp.status, json.loads(raw) if raw else {}
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", "replace")
+        try:
+            parsed = json.loads(raw) if raw else {}
+        except json.JSONDecodeError:
+            parsed = {"raw": raw}
+        return exc.code, parsed
+
+
+def _paypal_access_token(cfg: dict) -> tuple[str | None, dict | None]:
+    basic = base64.b64encode(
+        f"{cfg['client_id']}:{cfg['client_secret']}".encode("utf-8")
+    ).decode("ascii")
+    status, payload = _paypal_http(
+        "POST",
+        cfg["base"] + "/v1/oauth2/token",
+        {
+            "Authorization": f"Basic {basic}",
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        b"grant_type=client_credentials",
+    )
+    if status == 200 and payload.get("access_token"):
+        return payload["access_token"], None
+    return None, {"http_status": status, "paypal": payload}
+
+
+def _paypal_create_order(cfg: dict, token: str, purchase: dict, amount: str,
+                         certificate: dict) -> tuple[int, dict]:
+    currency = str(purchase.get("currency", "USD")).strip().upper() or "USD"
+    item = str(purchase.get("item", "")).strip() or "ZeroBeacon certified service"
+    cert_ref = (
+        certificate.get("canonical_address")
+        or certificate.get("registry_id")
+        or "certified"
+    )
+    order = {
+        "intent": "CAPTURE",
+        "purchase_units": [
+            {
+                "description": f"{item} - ZeroBeacon certificate {cert_ref}"[:127],
+                "custom_id": str(cert_ref)[:127],
+                "amount": {"currency_code": currency, "value": amount},
+            }
+        ],
+    }
+    return _paypal_http(
+        "POST",
+        cfg["base"] + "/v2/checkout/orders",
+        {"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        json.dumps(order).encode("utf-8"),
+    )
+
+
+def _captured_orders() -> dict:
+    path = os.path.join(_data_dir(), PAYPAL_CAPTURED_FILE)
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_captured(order_id: str, record: dict) -> None:
+    path = os.path.join(_data_dir(), PAYPAL_CAPTURED_FILE)
+    with _LOCK:
+        captured = _captured_orders()
+        captured[order_id] = record
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(captured, handle)
+
+
+def _amount_ok(raw) -> tuple[bool, str]:
+    """A positive amount with at most two decimal places, canonicalized."""
+    try:
+        value = Decimal(str(raw).strip())
+    except (InvalidOperation, ValueError):
+        return False, ""
+    if value <= 0:
+        return False, ""
+    quantized = value.quantize(Decimal("0.01"))
+    if value != quantized:
+        return False, ""
+    return True, str(quantized)
+
+
+@router.get("/paypal/status")
+async def paypal_status(request: Request):
+    cfg = _paypal_config()
+    return {
+        "ok": True,
+        "configured": cfg["configured"],
+        "environment": cfg["environment"],
+        "gate": "live",
+    }
+
+
+@router.post("/paypal/propose")
+async def paypal_propose(request: Request):
+    body, err = _read_json(await request.body())
+    if err:
+        return err
+    proposal = body.get("proposal")
+    purchase = body.get("purchase")
+    if not isinstance(proposal, dict) or not isinstance(purchase, dict):
+        return JSONResponse(
+            {"ok": False, "error": "proposal and purchase objects are required"},
+            status_code=400,
+        )
+    amount_ok, amount = _amount_ok(purchase.get("amount_usd", ""))
+    if not amount_ok:
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": "purchase.amount_usd must be a positive amount with at most 2 decimal places",
+            },
+            status_code=400,
+        )
+    host = request.url.hostname or "zerobeacon"
+    gate = run_flow(proposal, host)
+    certificate = gate.get("certificate")
+    if certificate is None:
+        return {
+            "ok": False,
+            "gate": "refused",
+            "refusal": gate.get("refusal"),
+            "certificate": None,
+            "paypal": None,
+            "receipt": gate.get("receipt"),
+            "receipt_verifies": gate.get("receipt_verifies"),
+        }
+    cfg = _paypal_config()
+    if not cfg["configured"]:
+        return {
+            "ok": True,
+            "gate": "passed",
+            "certificate": certificate,
+            "paypal": {"status": "unconfigured", "environment": cfg["environment"]},
+            "receipt": gate.get("receipt"),
+            "receipt_verifies": gate.get("receipt_verifies"),
+        }
+    token, error = _paypal_access_token(cfg)
+    if token is None:
+        return JSONResponse(
+            {
+                "ok": False,
+                "gate": "passed",
+                "certificate": certificate,
+                "paypal": {"status": "auth_failed", **(error or {})},
+            },
+            status_code=502,
+        )
+    status, payload = _paypal_create_order(cfg, token, purchase, amount, certificate)
+    if status not in (200, 201) or "id" not in payload:
+        return JSONResponse(
+            {
+                "ok": False,
+                "gate": "passed",
+                "certificate": certificate,
+                "paypal": {
+                    "status": "order_failed",
+                    "http_status": status,
+                    "paypal": payload,
+                },
+            },
+            status_code=502,
+        )
+    approve_url = next(
+        (link.get("href") for link in payload.get("links", []) if link.get("rel") == "approve"),
+        None,
+    )
+    return {
+        "ok": True,
+        "gate": "passed",
+        "certificate": certificate,
+        "paypal": {
+            "status": "created",
+            "order_id": payload["id"],
+            "approve_url": approve_url,
+            "environment": cfg["environment"],
+        },
+        "receipt": gate.get("receipt"),
+        "receipt_verifies": gate.get("receipt_verifies"),
+    }
+
+
+@router.post("/paypal/capture")
+async def paypal_capture(request: Request):
+    body, err = _read_json(await request.body())
+    if err:
+        return err
+    order_id = body.get("paypal_order_id")
+    if not isinstance(order_id, str) or not order_id.strip():
+        return JSONResponse(
+            {"ok": False, "error": "paypal_order_id is required"},
+            status_code=400,
+        )
+    order_id = order_id.strip()
+    existing = _captured_orders().get(order_id)
+    if existing is not None:
+        return {
+            "ok": True,
+            "paypal": {"status": "already_captured", **existing["paypal"]},
+            "receipt": existing.get("receipt"),
+            "recorded": False,
+        }
+    cfg = _paypal_config()
+    if not cfg["configured"]:
+        return {
+            "ok": False,
+            "paypal": {"status": "unconfigured", "environment": cfg["environment"]},
+        }
+    token, error = _paypal_access_token(cfg)
+    if token is None:
+        return JSONResponse(
+            {"ok": False, "paypal": {"status": "auth_failed", **(error or {})}},
+            status_code=502,
+        )
+    status, payload = _paypal_http(
+        "POST",
+        f"{cfg['base']}/v2/checkout/orders/{order_id}/capture",
+        {"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        b"{}",
+    )
+    if status not in (200, 201) or payload.get("status") != "COMPLETED":
+        return JSONResponse(
+            {
+                "ok": False,
+                "paypal": {
+                    "status": "capture_failed",
+                    "http_status": status,
+                    "paypal": payload,
+                },
+            },
+            status_code=502,
+        )
+    capture_id = amount = currency = None
+    try:
+        capture = payload["purchase_units"][0]["payments"]["captures"][0]
+        capture_id = capture.get("id")
+        amount = capture.get("amount", {}).get("value")
+        currency = capture.get("amount", {}).get("currency_code")
+    except (KeyError, IndexError, TypeError):
+        pass
+    paypal_part = {
+        "order_id": order_id,
+        "capture_id": capture_id,
+        "amount": amount,
+        "currency": currency,
+        "environment": cfg["environment"],
+    }
+    recorded = record_receipt(
+        "trust-paypal",
+        {"method": "POST", "path": "/api/trust/paypal/capture", **paypal_part},
+        "paypal_payment_executed",
+    )
+    _save_captured(
+        order_id, {"paypal": paypal_part, "receipt": recorded["receipt"]}
+    )
+    return {
+        "ok": recorded["bundle_ok"] is True,
+        "paypal": {"status": "captured", **paypal_part},
+        "receipt": recorded["receipt"],
+        "receipt_verifies": recorded["bundle_ok"],
+        "recorded": True,
     }
