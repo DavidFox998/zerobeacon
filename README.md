@@ -73,11 +73,16 @@ other systems and further automation:
 Engineering summaries and code for both are available upon
 request.
 
-One trust-layer item remains mid-build and is disclosed here
-rather than smoothed over: Anchor certificates currently resolve
-against a demonstration registry (live issuance is in build).
-Receipts answers over both REST and MCP (closed 2026-10-24).
-The toolset is unaffected.
+Both items that were mid-build at first publication are now
+closed: Receipts answers over both REST and MCP (closed
+2026-10-24), and Anchor live issuance is built and deployed
+(2026-10-24) — a passing flow records its certificate in a
+persisted live registry signed under a server-side key, and a
+repeat certification is idempotent rather than duplicated.
+Production issuance activates when the signing secret is
+provisioned on Fly; until then the service self-reports live
+issuance as unconfigured and resolves against the demonstration
+registry, exactly as before. The toolset is unaffected.
 
 ## The 9 Controlled Collisions
 
