@@ -74,6 +74,70 @@ key's tier. A well-formed proposal returns a certificate and a
 chained receipt; a proposal whose claims do not reproduce returns
 a refusal naming the failed check, and no certificate is issued.
 
+## The Friction Moments
+
+Every developer knows the feeling. Nothing is exactly broken, but
+nothing is moving either. A cloud server sits idle somewhere,
+burning its little meter. A LoRA comes back malformed. A
+credential that exists on one machine is needed on another, and
+both machines were designed, quite properly, not to trust anyone.
+These are friction moments, and they are not the exception in a
+developer's day. They are the day.
+
+Apathy was born in one of those moments. The mathematics behind
+this project is written in Lean, and Lean has an honest little
+word for an unfinished proof: `sorry` — a placeholder that says
+*the gap is here*. The trouble is that the word also lives
+everywhere else. It appears in comments, in file headers, in the
+ordinary prose around the proofs — anywhere a human wrote *about*
+a gap rather than leaving one. Read naively, a healthy codebase
+looks riddled with holes. Read carefully, almost none of them are
+real.
+
+So Apathy learned to read carefully. It ignores every mention of
+"sorry" that is not a sorry — the comments, the headers, the
+discussion — and zeroes in on the true sorries: the genuine
+mathematical gaps, the places where a proof actually stops. That
+discrimination, small as it sounds, is the difference between an
+audit you can trust and an alarm that cries all day.
+
+But the largest share of friction has a different source:
+secrets. Moving a secret from where it lives to where it is
+needed — and keeping it a secret the whole way, across machines
+and systems built security-first — is where the hours go. Our
+answer to that one is Grantline, and it is in beta testing now.
+
+Step back, and the project's whole friction story is really a
+story about overcoming paradigm. Two paradigms, specifically.
+
+The first: in any connected device, collision is the biggest
+problem facing us today. Addresses collide. Names collide.
+Intentions collide. The second: the world's capital economy is
+built on scarcity — on the assumption that the valuable thing is
+the rare thing. To move faster through the friction of creating,
+we built the opposite assumption into this system: an economy
+based on abundance.
+
+Because collisions, it turns out, are abundant. There is no
+shortage of them, and no stopping them. So the question changes.
+Not *how do we avoid collisions?* but *how do collisions become
+an asset?* And then the sharper question underneath it: *which
+collisions are unavoidable?*
+
+Those — the unavoidable ones — are the beacon. They are the
+anchor. A BIOS, if you will: the small, reliable layer everything
+else boots from, the first thing that loads because it is the
+thing that cannot not be there. There are very few of them.
+Fewer than ten — nine, by this system's count — collisions that
+are predicted, anticipated, and reliable. Those are the anchors,
+and they are what enables everything built on top.
+
+Friction does not disappear. It gets classified. The false
+signals are ignored — that is Apathy. The secrets are brokered
+instead of dragged from machine to machine — that is Grantline,
+in beta. And the handful of collisions that cannot be avoided
+are not fought at all. They are made load-bearing.
+
 ## Honest status
 
 - The catalogue and harness figures above are the deployed state,
