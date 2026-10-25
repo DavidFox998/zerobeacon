@@ -26,3 +26,7 @@ Manual revision 2026-10-25: the PayPal and Amazon lane manuals
 now carry a shared section ("Two paths, one harness") — each
 lane's integration written for both audiences, engineering and
 plain terms, with a compare-and-contrast of the two paths.
+
+Amazon manual revision 2026-10-25 (v3): the trust harness at
+full treatment, a dispute-resolution adaptation section, and
+the cleaned shared core.
