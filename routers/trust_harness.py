@@ -64,6 +64,10 @@ apathy_mcp = _load("apathy_mcp", _ROOT / "apathy" / "apathy_mcp.py")
 proven_mcp = _load("proven_mcp", _ROOT / "proven" / "proven_mcp.py")
 anchor_mcp = _load("anchor_mcp", _ROOT / "anchor" / "anchor_mcp.py")
 receipts_mcp = _load("receipts_mcp", _ROOT / "receipts" / "receipts_mcp.py")
+disputes = _load("disputes", _ROOT / "disputes" / "disputes.py")
+disputes_mcp = _load("disputes_mcp", _ROOT / "disputes" / "disputes_mcp.py")
+amazon_pay = _load(
+    "amazon_pay", _ROOT / "rails" / "amazon_pay" / "amazon_pay.py")
 
 
 def _receipts_call(name: str, arguments: dict) -> dict:
@@ -86,6 +90,58 @@ def _registry_info_call(name: str, arguments: dict) -> dict:
     return result
 
 
+def _purchase_record_for(rail: str, arguments: dict) -> dict | None:
+    """The recorded purchase behind a dispute route, read from the
+    captured-order stores. None when nothing matches."""
+    if rail == "paypal":
+        store = _captured_orders()
+        record = None
+        if arguments.get("order_id"):
+            record = store.get(arguments["order_id"])
+        if record is None and arguments.get("capture_id"):
+            record = next(
+                (entry for entry in store.values()
+                 if entry.get("paypal", {}).get("capture_id")
+                 == arguments["capture_id"]),
+                None,
+            )
+        if record is None:
+            return None
+        return {"rail": "paypal", **record["paypal"],
+                "receipt": record.get("receipt")}
+    if rail == "amazon_pay":
+        store = _amazon_captured()
+        record = None
+        if arguments.get("session_id"):
+            record = store.get(arguments["session_id"])
+        if record is None and arguments.get("charge_id"):
+            record = next(
+                (entry for entry in store.values()
+                 if entry.get("amazonpay", {}).get("charge_id")
+                 == arguments["charge_id"]),
+                None,
+            )
+        if record is None:
+            return None
+        return {"rail": "amazon_pay", **record["amazonpay"],
+                "receipt": record.get("receipt"),
+                "certificate": record.get("certificate"),
+                "item": record.get("item")}
+    return None
+
+
+def _dispute_evidence(rail: str, arguments: dict):
+    """(purchase, bundle) for a dispute route: the store record plus
+    the live chain bundle, which the disputes module verifies."""
+    canonical = str(rail).strip().lower()
+    return _purchase_record_for(canonical, arguments), _chain().to_bundle()
+
+
+def _disputes_call(name: str, arguments: dict) -> dict:
+    return disputes_mcp.call_tool(
+        name, arguments, evidence_provider=_dispute_evidence)
+
+
 _DISPATCH = {
     "audit_repo": apathy_mcp.call_tool,
     "check_manifest": apathy_mcp.call_tool,
@@ -98,6 +154,7 @@ _DISPATCH = {
     "registry_info": _registry_info_call,
     "append_receipt": _receipts_call,
     "verify_receipts": _receipts_call,
+    "dispute_route": _disputes_call,
 }
 
 HARNESS_TOOL_NAMES = tuple(_DISPATCH)
@@ -457,9 +514,11 @@ _PAGE = """<!DOCTYPE html>
       <tr><td>Proven, verify</td><td><code>POST /api/trust/proven/facts</code><br><code>POST /api/trust/proven/probe</code><br><code>POST /api/trust/proven/drift</code></td><td><code>get_facts</code><br><code>probe_server</code><br><code>check_drift</code></td></tr>
       <tr><td>Anchor, certificate</td><td><code>POST /api/trust/anchor/parse</code><br><code>POST /api/trust/anchor/verify</code><br><code>POST /api/trust/anchor/registry</code></td><td><code>parse_address</code><br><code>verify_address</code><br><code>registry_info</code></td></tr>
       <tr><td>Receipts, record</td><td><code>POST /api/trust/receipts/append</code><br><code>POST /api/trust/receipts/verify</code></td><td><code>append_receipt</code><br><code>verify_receipts</code></td></tr>
+      <tr><td>Disputes, routing</td><td><code>POST /api/trust/disputes/route</code></td><td><code>dispute_route</code></td></tr>
+      <tr><td>Amazon Pay rail (staged, fixture)</td><td><code>POST /api/trust/amazonpay/propose</code><br><code>POST /api/trust/amazonpay/capture</code></td><td>—</td></tr>
     </tbody>
   </table>
-  <p>MCP transport for the eleven tools above is <code>POST /api/trust/mcp</code>
+  <p>MCP transport for the twelve tools above is <code>POST /api/trust/mcp</code>
   (JSON-RPC, protocol 2025-11-25). The catalogue <code>POST /mcp</code> list
   is unchanged.</p>
 
@@ -645,6 +704,24 @@ async def receipts_verify(request: Request):
     return {"ok": ok is True, "detail": detail}
 
 
+@router.post("/disputes/route")
+async def dispute_route_endpoint(request: Request):
+    """Rail-aware dispute routing + the Receipts evidence packet.
+
+    Routing and evidence only: this endpoint never files, submits,
+    or initiates a dispute or claim with any provider.
+    """
+    body, err = _read_json(await request.body())
+    if err:
+        return err
+    rail = body.get("rail")
+    if not isinstance(rail, str) or not rail.strip():
+        return JSONResponse(
+            {"ok": False, "error": "rail is required"}, status_code=400)
+    purchase, bundle = _dispute_evidence(rail, body)
+    return disputes.route_dispute(rail, purchase, bundle)
+
+
 @router.post("/flow")
 async def trust_flow(request: Request):
     body, err = _read_json(await request.body())
@@ -679,6 +756,7 @@ async def trust_mcp(request: Request):
             + list(proven_mcp.TOOLS)
             + list(anchor_mcp.TOOLS)
             + list(receipts_mcp.TOOLS)
+            + list(disputes_mcp.TOOLS)
         )
         return {"jsonrpc": "2.0", "id": mid, "result": {"tools": tools}}
     if method == "tools/call":
@@ -1002,6 +1080,249 @@ async def paypal_capture(request: Request):
     return {
         "ok": recorded["bundle_ok"] is True,
         "paypal": {"status": "captured", **paypal_part},
+        "receipt": recorded["receipt"],
+        "receipt_verifies": recorded["bundle_ok"],
+        "recorded": True,
+    }
+
+
+# -- Amazon Pay gate (STAGED, fixture mode) ------------------------------
+# Same gate contract as PayPal: a purchase proposal runs the composed
+# flow first; only a passing flow may create a checkout session, and
+# capture records the executed payment in Receipts exactly once.
+# The rail adapter is staged: the default (and, without a merchant
+# account, only) transport is the deterministic fixture — labelled
+# rail_mode "fixture" with the adapter's mode note on every response.
+# Amazon Pay merchant account not connected; fixture responses only,
+# no Amazon system was called. No code path here talks to Amazon.
+
+AMAZON_CAPTURED_FILE = "amazon-pay-captured.json"
+_AMAZON_CLIENT = None
+_AMAZON_PENDING: dict[str, dict] = {}
+
+
+def _amazon_client():
+    global _AMAZON_CLIENT
+    if _AMAZON_CLIENT is None:
+        _AMAZON_CLIENT = amazon_pay.client_from_env()
+    return _AMAZON_CLIENT
+
+
+def _amazon_captured() -> dict:
+    path = os.path.join(_data_dir(), AMAZON_CAPTURED_FILE)
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_amazon_captured(session_id: str, record: dict) -> None:
+    path = os.path.join(_data_dir(), AMAZON_CAPTURED_FILE)
+    with _LOCK:
+        captured = _amazon_captured()
+        captured[session_id] = record
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(captured, handle)
+
+
+@router.get("/amazonpay/status")
+async def amazonpay_status(request: Request):
+    client = _amazon_client()
+    body = {
+        "ok": True,
+        "rail": "amazon_pay",
+        "rail_mode": client.mode,
+        "gate": "live",
+    }
+    if client.mode == "fixture":
+        body["configured"] = False
+        body["mode_note"] = amazon_pay.FIXTURE_NOTE
+    else:
+        body["configured"] = client.transport.configured
+    return body
+
+
+@router.post("/amazonpay/propose")
+async def amazonpay_propose(request: Request):
+    body, err = _read_json(await request.body())
+    if err:
+        return err
+    proposal = body.get("proposal")
+    purchase = body.get("purchase")
+    if not isinstance(proposal, dict) or not isinstance(purchase, dict):
+        return JSONResponse(
+            {"ok": False, "error": "proposal and purchase objects are required"},
+            status_code=400,
+        )
+    amount_ok, amount = _amount_ok(purchase.get("amount_usd", ""))
+    if not amount_ok:
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": "purchase.amount_usd must be a positive amount with at most 2 decimal places",
+            },
+            status_code=400,
+        )
+    host = request.url.hostname or "zerobeacon"
+    gate = run_flow(proposal, host)
+    certificate = gate.get("certificate")
+    if certificate is None:
+        return {
+            "ok": False,
+            "gate": "refused",
+            "refusal": gate.get("refusal"),
+            "certificate": None,
+            "amazonpay": None,
+            "receipt": gate.get("receipt"),
+            "receipt_verifies": gate.get("receipt_verifies"),
+        }
+    client = _amazon_client()
+    currency = str(purchase.get("currency", "USD")).strip().upper() or "USD"
+    item = str(purchase.get("item", "")).strip() or "ZeroBeacon certified service"
+    payload = {
+        "webCheckoutDetails": {
+            "checkoutResultReturnUrl": "https://zerobeacon.ai/trust",
+        },
+        "chargeAmount": {"amount": amount, "currencyCode": currency},
+        "merchantMetadata": {
+            "merchantReferenceId": str(
+                certificate.get("canonical_address") or "certified")[:64],
+            "noteToBuyer": item[:64],
+        },
+    }
+    try:
+        session = client.create_checkout_session(
+            payload, idempotency_key=gate["receipt"]["hash"])
+    except amazon_pay.NotConfiguredError as exc:
+        return {
+            "ok": True,
+            "gate": "passed",
+            "certificate": certificate,
+            "amazonpay": {
+                "status": "unconfigured",
+                "rail": "amazon_pay",
+                "rail_mode": client.mode,
+                "detail": str(exc),
+            },
+            "receipt": gate.get("receipt"),
+            "receipt_verifies": gate.get("receipt_verifies"),
+        }
+    session_id = session["checkoutSessionId"]
+    _AMAZON_PENDING[session_id] = {
+        "certificate": {
+            "verdict": certificate.get("verdict"),
+            "canonical_address": certificate.get("canonical_address"),
+            "registry_source": certificate.get("registry_source"),
+        },
+        "item": item,
+        "amount": amount,
+        "currency": currency,
+    }
+    return {
+        "ok": True,
+        "gate": "passed",
+        "certificate": certificate,
+        "amazonpay": {"status": "session_created", **session},
+        "receipt": gate.get("receipt"),
+        "receipt_verifies": gate.get("receipt_verifies"),
+    }
+
+
+@router.post("/amazonpay/capture")
+async def amazonpay_capture(request: Request):
+    body, err = _read_json(await request.body())
+    if err:
+        return err
+    session_id = body.get("session_id")
+    if not isinstance(session_id, str) or not session_id.strip():
+        return JSONResponse(
+            {"ok": False, "error": "session_id is required"},
+            status_code=400,
+        )
+    session_id = session_id.strip()
+    existing = _amazon_captured().get(session_id)
+    if existing is not None:
+        return {
+            "ok": True,
+            "amazonpay": {"status": "already_captured", **existing["amazonpay"]},
+            "receipt": existing.get("receipt"),
+            "recorded": False,
+        }
+    client = _amazon_client()
+    try:
+        completed = client.complete_checkout_session(
+            session_id, {}, idempotency_key=f"{session_id}:complete")
+        charge_id = completed.get("chargeId")
+        if not charge_id:
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "amazonpay": {
+                        "status": "complete_failed",
+                        "rail": "amazon_pay",
+                        "rail_mode": client.mode,
+                        "session": completed,
+                    },
+                },
+                status_code=502,
+            )
+        captured = client.capture_charge(
+            charge_id, {}, idempotency_key=f"{session_id}:capture")
+    except amazon_pay.NotConfiguredError as exc:
+        return {
+            "ok": False,
+            "amazonpay": {
+                "status": "unconfigured",
+                "rail": "amazon_pay",
+                "rail_mode": client.mode,
+                "detail": str(exc),
+            },
+        }
+    except amazon_pay.RailError as exc:
+        return JSONResponse(
+            {
+                "ok": False,
+                "amazonpay": {
+                    "status": "rail_error",
+                    "rail": "amazon_pay",
+                    "rail_mode": client.mode,
+                    "detail": str(exc),
+                },
+            },
+            status_code=502,
+        )
+    pending = _AMAZON_PENDING.pop(session_id, {})
+    captured_amount = captured.get("capturedAmount") or {}
+    amazon_part = {
+        "rail": "amazon_pay",
+        "rail_mode": client.mode,
+        "session_id": session_id,
+        "charge_id": charge_id,
+        "charge_permission_id": completed.get("chargePermissionId"),
+        "amount": captured_amount.get("amount"),
+        "currency": captured_amount.get("currencyCode"),
+        "charge_state": captured.get("statusDetails", {}).get("state"),
+    }
+    if client.mode == "fixture":
+        amazon_part["mode_note"] = amazon_pay.FIXTURE_NOTE
+    recorded = record_receipt(
+        "trust-amazonpay",
+        {"method": "POST", "path": "/api/trust/amazonpay/capture",
+         **amazon_part},
+        "amazonpay_payment_executed",
+    )
+    _save_amazon_captured(session_id, {
+        "amazonpay": amazon_part,
+        "receipt": recorded["receipt"],
+        "certificate": pending.get("certificate"),
+        "item": pending.get("item"),
+    })
+    return {
+        "ok": recorded["bundle_ok"] is True,
+        "amazonpay": {"status": "captured", **amazon_part},
         "receipt": recorded["receipt"],
         "receipt_verifies": recorded["bundle_ok"],
         "recorded": True,

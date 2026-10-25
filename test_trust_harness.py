@@ -2,8 +2,8 @@
 
 Pass path returns a certificate and a receipt. Tamper path names the
 failed check and returns no certificate. Catalogue counts stay
-1003 / 1052 / 21. Harness tools (11, receipts included) are counted on
-their own endpoint.
+1003 / 1052 / 21. Harness tools (12, receipts and dispute routing
+included) are counted on their own endpoint.
 """
 
 import json
@@ -168,8 +168,9 @@ def test_module_endpoints_and_mcp_list(tmp_path):
         "probe_server", "get_facts", "check_drift",
         "parse_address", "verify_address", "registry_info",
         "append_receipt", "verify_receipts",
+        "dispute_route",
     ]
-    assert len(names) == 11
+    assert len(names) == 12
     assert "receipts_mcp_gap" not in listed.json()["result"]
 
     init = client.post("/api/trust/mcp", headers=headers, json={
