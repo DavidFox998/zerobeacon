@@ -21,3 +21,8 @@ X-API-Key: zbk_…
   deployment, the endpoint answers `503 manual_not_provisioned`.
 
 The response is the manual as `text/markdown`.
+
+Manual revision 2026-10-25: the PayPal and Amazon lane manuals
+now carry a shared section ("Two paths, one harness") — each
+lane's integration written for both audiences, engineering and
+plain terms, with a compare-and-contrast of the two paths.
