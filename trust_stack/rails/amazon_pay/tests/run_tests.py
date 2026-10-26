@@ -392,6 +392,67 @@ def main() -> int:
                           pkcs1_call["headers"], pkcs1_call["body"],
                           modulus, exponent))
 
+    # A17: the PEM-text key source (no file path) signs + verifies.
+    pem_env = {
+        "AMAZON_PAY_MERCHANT_ID": "MERCHANT-TEST",
+        "AMAZON_PAY_PUBLIC_KEY_ID": "PUBKEY-TEST",
+        "AMAZON_PAY_PRIVATE_KEY": TEST_KEY_PKCS8,
+    }
+    pem_calls: list[dict] = []
+
+    def pem_opener(method, url, headers, body):
+        pem_calls.append({"method": method, "url": url,
+                          "headers": dict(headers), "body": body})
+        return 200, b"{}"
+
+    pem_transport = amazon_pay.SandboxTransport(
+        pem_env, opener=pem_opener, clock=_fixed_clock)
+    pem_transport.request("create_checkout_session", {}, {},
+                          "sb-pem")
+    pem_call = pem_calls[0] if pem_calls else None
+    check("A17. PEM-text key source signs and the signature verifies",
+          pem_transport.configured
+          and pem_call is not None
+          and _pss_verify(pem_call["headers"]["authorization"],
+                          "POST", "/sandbox/v2/checkoutSessions",
+                          pem_call["headers"], pem_call["body"],
+                          modulus, exponent))
+
+    # A18: PEM text with flattened (literal backslash-n) newlines.
+    flat_env = dict(pem_env)
+    flat_env["AMAZON_PAY_PRIVATE_KEY"] = \
+        TEST_KEY_PKCS8.replace("\n", "\\n")
+    flat_calls: list[dict] = []
+
+    def flat_opener(method, url, headers, body):
+        flat_calls.append({"method": method, "url": url,
+                           "headers": dict(headers), "body": body})
+        return 200, b"{}"
+
+    amazon_pay.SandboxTransport(flat_env, opener=flat_opener,
+                                clock=_fixed_clock) \
+        .request("create_checkout_session", {}, {}, "sb-flat")
+    check("A18. flattened-newline PEM text still loads and signs",
+          len(flat_calls) == 1
+          and flat_calls[0]["headers"]["authorization"].startswith(
+              "AMZN-PAY-RSASSA-PSS-V2 PublicKeyId=PUBKEY-TEST, "))
+
+    # A19: neither key source set -> key reported missing, no send.
+    bare_env = {
+        "AMAZON_PAY_MERCHANT_ID": "MERCHANT-TEST",
+        "AMAZON_PAY_PUBLIC_KEY_ID": "PUBKEY-TEST",
+    }
+    bare = amazon_pay.SandboxTransport(bare_env, opener=flat_opener,
+                                       clock=_fixed_clock)
+    try:
+        bare.request("create_checkout_session", {}, {}, "sb-bare")
+        check("A19. no key source refuses before any call", False)
+    except amazon_pay.NotConfiguredError:
+        check("A19. no key source refuses before any call",
+              "AMAZON_PAY_PRIVATE_KEY_PATH"
+              in bare.missing_credentials()
+              and len(flat_calls) == 1)
+
     passed = sum(1 for _, ok in RESULTS if ok)
     print()
     print(f"{passed}/{len(RESULTS)} checks passed")
