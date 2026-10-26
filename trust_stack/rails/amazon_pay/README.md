@@ -39,8 +39,9 @@ transport is not built.
     idempotency key, so replays return the same object.
   - `sandbox`: signs and sends. Each request is canonicalized per
     Amazon's "Signing requests" doc (Step 1), signed with
-    RSASSA-PSS (SHA-256, MGF1-SHA-256, salt length 20 — the EN doc
-    value) under the algorithm name `AMZN-PAY-RSASSA-PSS-V2`, and
+    RSASSA-PSS (SHA-256, MGF1-SHA-256, salt length 32 — Amazon's
+    verifier pins 32 despite the EN doc's 20; proven live
+    2026-10-26) under the algorithm name `AMZN-PAY-RSASSA-PSS-V2`, and
     sent once over HTTPS to `pay-api.amazon.com/sandbox`.
     Signing is pure stdlib: a minimal DER reader loads the RSA
     private key (PKCS#8 or PKCS#1 PEM) and the PSS padding is
