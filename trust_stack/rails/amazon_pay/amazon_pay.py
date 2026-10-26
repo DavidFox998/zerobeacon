@@ -15,15 +15,16 @@ Transport modes:
   CaptureInitiated -> Completed). No network I/O of any kind.
 
   sandbox: when the merchant credential environment variables
-  (AMAZON_PAY_MERCHANT_ID, AMAZON_PAY_PUBLIC_KEY_ID,
-  AMAZON_PAY_PRIVATE_KEY_PATH) are set, each call is signed with
-  Amazon Pay Signature V2 (AMZN-PAY-RSASSA-PSS-V2: RSASSA-PSS with
-  SHA-256 / MGF1-SHA-256, salt length 20) and sent to the Amazon Pay
-  API v2 sandbox endpoints at pay-api.amazon.com/sandbox. Without
-  usable credentials — variables missing, or a private key file
-  that cannot be loaded as RSA — it raises NotConfiguredError and
-  sends nothing. There is no production (live-money) transport in
-  this module.
+  (AMAZON_PAY_MERCHANT_ID, AMAZON_PAY_PUBLIC_KEY_ID, and a private
+  key supplied either as a file named by AMAZON_PAY_PRIVATE_KEY_PATH
+  or as PEM text in AMAZON_PAY_PRIVATE_KEY) are set, each call is
+  signed with Amazon Pay Signature V2 (AMZN-PAY-RSASSA-PSS-V2:
+  RSASSA-PSS with SHA-256 / MGF1-SHA-256, salt length 20) and sent
+  to the Amazon Pay API v2 sandbox endpoints at
+  pay-api.amazon.com/sandbox. Without usable credentials — variables
+  missing, or a private key that cannot be loaded as RSA — it
+  raises NotConfiguredError and sends nothing. There is no
+  production (live-money) transport in this module.
 
 HONESTY CONTRACT: every response produced here carries
 "rail": "amazon_pay" and "rail_mode": <mode>; fixture responses
@@ -81,10 +82,16 @@ SANDBOX_ENV_VARS = (
     "AMAZON_PAY_PRIVATE_KEY_PATH",
 )
 
+# Alternative key source: the PEM text itself, for hosts where the
+# key arrives as a secret value rather than a file (e.g. Fly
+# secrets). The file path wins when both are set, and either source
+# satisfies the key requirement in missing_credentials().
+SANDBOX_KEY_PEM_ENV_VAR = "AMAZON_PAY_PRIVATE_KEY"
+
 
 class NotConfiguredError(Exception):
     """The sandbox transport cannot run: credentials absent, or the
-    private key file cannot be loaded as an RSA key. Nothing is sent
+    private key cannot be loaded as an RSA key. Nothing is sent
     to Amazon when this is raised."""
 
 
@@ -362,14 +369,15 @@ def _parse_pkcs1(der: bytes) -> tuple[int, int, int]:
     return modulus, public_exponent, private_exponent
 
 
-def _load_rsa_private_key(path: str) -> tuple[int, int, int]:
-    """(modulus, public exponent, private exponent) from a PEM file.
+def _parse_rsa_private_key_text(text: str,
+                                source: str) -> tuple[int, int, int]:
+    """(modulus, public exponent, private exponent) from PEM text.
 
     Supports PKCS#8 ("BEGIN PRIVATE KEY") wrapping a PKCS#1 key and
-    a bare PKCS#1 key ("BEGIN RSA PRIVATE KEY"). Any failure —
-    missing or unreadable file, not PEM, not RSA — raises
-    NotConfiguredError: without a usable key the transport refuses
-    and sends nothing.
+    a bare PKCS#1 key ("BEGIN RSA PRIVATE KEY"). Any failure — not
+    PEM, not RSA — raises NotConfiguredError naming `source` (a
+    variable description, never key material): without a usable key
+    the transport refuses and sends nothing.
     """
     def _fail(reason: str) -> NotConfiguredError:
         return NotConfiguredError(
@@ -377,13 +385,6 @@ def _load_rsa_private_key(path: str) -> tuple[int, int, int]:
             f"{reason}; no call was sent to Amazon")
 
     try:
-        with open(path, "rb") as handle:
-            raw = handle.read()
-    except OSError:
-        raise _fail("could not read the private key file named by "
-                    "AMAZON_PAY_PRIVATE_KEY_PATH") from None
-    try:
-        text = raw.decode("ascii")
         if "-----BEGIN RSA PRIVATE KEY-----" in text:
             body = text.split("-----BEGIN RSA PRIVATE KEY-----")[1]
             body = body.split("-----END RSA PRIVATE KEY-----")[0]
@@ -401,9 +402,51 @@ def _load_rsa_private_key(path: str) -> tuple[int, int, int]:
     except NotConfiguredError:
         raise
     except Exception:
-        raise _fail("could not parse an RSA private key from the "
-                    "file named by AMAZON_PAY_PRIVATE_KEY_PATH") \
-            from None
+        raise _fail("could not parse an RSA private key from "
+                    f"{source}") from None
+
+
+def _load_rsa_private_key(path: str) -> tuple[int, int, int]:
+    """(modulus, public exponent, private exponent) from a PEM file."""
+    try:
+        with open(path, "rb") as handle:
+            raw = handle.read()
+    except OSError:
+        raise NotConfiguredError(
+            "Amazon Pay sandbox transport is not configured: "
+            "could not read the private key file named by "
+            "AMAZON_PAY_PRIVATE_KEY_PATH; no call was sent to "
+            "Amazon") from None
+    try:
+        text = raw.decode("ascii")
+    except UnicodeDecodeError:
+        raise NotConfiguredError(
+            "Amazon Pay sandbox transport is not configured: "
+            "could not parse an RSA private key from the file named "
+            "by AMAZON_PAY_PRIVATE_KEY_PATH; no call was sent to "
+            "Amazon") from None
+    return _parse_rsa_private_key_text(
+        text, "the file named by AMAZON_PAY_PRIVATE_KEY_PATH")
+
+
+def _load_configured_key(env) -> tuple[int, int, int]:
+    """Load the sandbox RSA key from the configured source.
+
+    The file named by AMAZON_PAY_PRIVATE_KEY_PATH wins when set;
+    otherwise AMAZON_PAY_PRIVATE_KEY supplies the PEM text itself
+    (secret stores often flatten its newlines to literal backslash-n
+    sequences, which are restored before parsing). Callers have
+    already established that at least one source is set.
+    """
+    path = str(env.get("AMAZON_PAY_PRIVATE_KEY_PATH", "")).strip()
+    if path:
+        return _load_rsa_private_key(path)
+    pem = str(env.get(SANDBOX_KEY_PEM_ENV_VAR, ""))
+    if "\\n" in pem:
+        pem = pem.replace("\\n", "\n")
+    return _parse_rsa_private_key_text(
+        pem, "the value of AMAZON_PAY_PRIVATE_KEY")
+
 
 
 # -- RSASSA-PSS signing (RFC 8017, SHA-256 / MGF1-SHA-256) -------------
@@ -493,9 +536,11 @@ def _default_opener(method: str, url: str, headers: dict,
 class SandboxTransport:
     """Signs and sends Amazon Pay sandbox calls.
 
-    Raises NotConfiguredError unless every variable in
-    SANDBOX_ENV_VARS is set and the named private key file loads as
-    an RSA key; in either failure nothing is sent. Otherwise each
+    Raises NotConfiguredError unless the credential variables are
+    set (merchant id, public key id, and a private key from the
+    file named by AMAZON_PAY_PRIVATE_KEY_PATH or the PEM text in
+    AMAZON_PAY_PRIVATE_KEY) and the key loads as an RSA key; in
+    either failure nothing is sent. Otherwise each
     request is signed with Amazon Pay Signature V2 and sent once
     through the opener (urllib HTTPS by default; tests inject a fake
     opener and a fixed clock). build_request() returns the fully
@@ -511,8 +556,13 @@ class SandboxTransport:
         self._clock = clock
 
     def missing_credentials(self) -> list[str]:
-        return [name for name in SANDBOX_ENV_VARS
-                if not str(self._env.get(name, "")).strip()]
+        missing = [name for name in SANDBOX_ENV_VARS
+                   if not str(self._env.get(name, "")).strip()]
+        if str(self._env.get(SANDBOX_KEY_PEM_ENV_VAR, "")).strip():
+            # The PEM-text key source satisfies the key requirement.
+            missing = [name for name in missing
+                       if name != "AMAZON_PAY_PRIVATE_KEY_PATH"]
+        return missing
 
     @property
     def configured(self) -> bool:
@@ -555,8 +605,7 @@ class SandboxTransport:
             _SIGNING_ALGORITHM + "\n"
             + _sha256_hex(canonical.encode("utf-8")))
         modulus, _public_exponent, private_exponent = \
-            _load_rsa_private_key(
-                str(self._env.get("AMAZON_PAY_PRIVATE_KEY_PATH", "")))
+            _load_configured_key(self._env)
         signature = _pss_sign(
             hashlib.sha256(string_to_sign.encode("utf-8")).digest(),
             modulus, private_exponent)
