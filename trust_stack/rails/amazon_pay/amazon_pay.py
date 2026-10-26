@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Amazon Pay rail adapter — STAGED, fixture mode only.
+"""Amazon Pay rail adapter — fixture default; sandbox signs and sends.
 
 This adapter sits behind the same gate contract as the PayPal rail:
 a purchase proposal runs the trust harness flow first, and only a
@@ -14,18 +14,23 @@ Transport modes:
   (CheckoutSession Open -> Completed/Canceled; Charge Authorized ->
   CaptureInitiated -> Completed). No network I/O of any kind.
 
-  sandbox: builds signed-request-ready calls for the Amazon Pay API
-  v2 sandbox endpoints at pay-api.amazon.com/sandbox, but raises
-  NotConfiguredError unless the merchant credential environment
-  variables are present — and, in this staged build, also when they
-  are present: the live transport is deliberately not wired to the
-  network until the merchant account exists and a human enables it.
-  No call is ever sent to Amazon by this module as shipped.
+  sandbox: when the merchant credential environment variables
+  (AMAZON_PAY_MERCHANT_ID, AMAZON_PAY_PUBLIC_KEY_ID,
+  AMAZON_PAY_PRIVATE_KEY_PATH) are set, each call is signed with
+  Amazon Pay Signature V2 (AMZN-PAY-RSASSA-PSS-V2: RSASSA-PSS with
+  SHA-256 / MGF1-SHA-256, salt length 20) and sent to the Amazon Pay
+  API v2 sandbox endpoints at pay-api.amazon.com/sandbox. Without
+  usable credentials — variables missing, or a private key file
+  that cannot be loaded as RSA — it raises NotConfiguredError and
+  sends nothing. There is no production (live-money) transport in
+  this module.
 
 HONESTY CONTRACT: every response produced here carries
-"rail": "amazon_pay", "rail_mode": <mode>, and, in fixture mode,
-"mode_note" with the text in FIXTURE_NOTE. Nothing in this module
-claims a live Amazon integration, because there isn't one yet.
+"rail": "amazon_pay" and "rail_mode": <mode>; fixture responses
+additionally carry "mode_note" with the text in FIXTURE_NOTE, and
+sandbox responses are Amazon's own response bodies. Nothing in
+this module claims a production Amazon integration, because the
+live endpoints are not built.
 
 Amazon Pay API v2 operation shapes (developer.amazon.com, Amazon Pay
 API v2 reference, checked 2026-10):
@@ -49,9 +54,15 @@ Standard library only. Python 3.12.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
+import secrets
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import datetime, timezone
 
 RAIL = "amazon_pay"
 SANDBOX_BASE = "https://pay-api.amazon.com/sandbox"
@@ -72,8 +83,9 @@ SANDBOX_ENV_VARS = (
 
 
 class NotConfiguredError(Exception):
-    """The sandbox transport cannot run: credentials absent (or the
-    staged build's live transport not yet enabled)."""
+    """The sandbox transport cannot run: credentials absent, or the
+    private key file cannot be loaded as an RSA key. Nothing is sent
+    to Amazon when this is raised."""
 
 
 class RailError(Exception):
@@ -261,7 +273,7 @@ class FixtureTransport:
 
 
 # ---------------------------------------------------------------------
-# Sandbox transport (staged: builds requests, never sends them)
+# Sandbox transport (live: signs with Signature V2 and sends)
 # ---------------------------------------------------------------------
 
 _OPERATION_HTTP = {
@@ -277,21 +289,226 @@ _OPERATION_HTTP = {
     "get_refund": ("GET", "/v2/refunds/{refund_id}"),
 }
 
+_SIGNING_ALGORITHM = "AMZN-PAY-RSASSA-PSS-V2"
+_SANDBOX_HOST = "pay-api.amazon.com"
+_SANDBOX_REGION = "na"
+# RSASSA-PSS parameters for Amazon Pay Signature V2, pinned from the
+# EN "Signing requests" doc (developer.amazon.com/docs/amazon-pay-
+# api-v2): SHA-256, MGF1-SHA-256, salt length 20. (A translated doc
+# page says 32; the EN page and its worked example use 20.)
+PSS_SALT_LENGTH = 20
+_RSA_ENCRYPTION_OID = bytes.fromhex("2a864886f70d010101")
+
+
+def _sha256_hex(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+# -- minimal ASN.1 DER reading (stdlib only) ---------------------------
+
+class _DerReader:
+    """Just enough DER to walk a PKCS#1 / PKCS#8 RSA private key."""
+
+    def __init__(self, data: bytes):
+        self._data = data
+        self._pos = 0
+
+    def _read_length(self) -> int:
+        first = self._data[self._pos]
+        self._pos += 1
+        if first < 0x80:
+            return first
+        count = first & 0x7F
+        if count == 0 or count > 4:
+            raise ValueError("bad DER length")
+        length = int.from_bytes(
+            self._data[self._pos:self._pos + count], "big")
+        self._pos += count
+        return length
+
+    def read(self, tag: int) -> bytes:
+        if self._pos >= len(self._data) or self._data[self._pos] != tag:
+            raise ValueError("unexpected DER tag")
+        self._pos += 1
+        length = self._read_length()
+        end = self._pos + length
+        if end > len(self._data):
+            raise ValueError("DER value overruns input")
+        content = self._data[self._pos:end]
+        self._pos = end
+        return content
+
+    def sequence(self) -> "_DerReader":
+        return _DerReader(self.read(0x30))
+
+    def integer(self) -> int:
+        return int.from_bytes(self.read(0x02), "big")
+
+    def octet_string(self) -> bytes:
+        return self.read(0x04)
+
+    def oid(self) -> bytes:
+        return self.read(0x06)
+
+
+def _parse_pkcs1(der: bytes) -> tuple[int, int, int]:
+    seq = _DerReader(der).sequence()
+    seq.integer()  # version
+    modulus = seq.integer()
+    public_exponent = seq.integer()
+    private_exponent = seq.integer()
+    if modulus <= 0 or private_exponent <= 0:
+        raise ValueError("bad RSA parameters")
+    return modulus, public_exponent, private_exponent
+
+
+def _load_rsa_private_key(path: str) -> tuple[int, int, int]:
+    """(modulus, public exponent, private exponent) from a PEM file.
+
+    Supports PKCS#8 ("BEGIN PRIVATE KEY") wrapping a PKCS#1 key and
+    a bare PKCS#1 key ("BEGIN RSA PRIVATE KEY"). Any failure —
+    missing or unreadable file, not PEM, not RSA — raises
+    NotConfiguredError: without a usable key the transport refuses
+    and sends nothing.
+    """
+    def _fail(reason: str) -> NotConfiguredError:
+        return NotConfiguredError(
+            "Amazon Pay sandbox transport is not configured: "
+            f"{reason}; no call was sent to Amazon")
+
+    try:
+        with open(path, "rb") as handle:
+            raw = handle.read()
+    except OSError:
+        raise _fail("could not read the private key file named by "
+                    "AMAZON_PAY_PRIVATE_KEY_PATH") from None
+    try:
+        text = raw.decode("ascii")
+        if "-----BEGIN RSA PRIVATE KEY-----" in text:
+            body = text.split("-----BEGIN RSA PRIVATE KEY-----")[1]
+            body = body.split("-----END RSA PRIVATE KEY-----")[0]
+            return _parse_pkcs1(base64.b64decode(body))
+        if "-----BEGIN PRIVATE KEY-----" in text:
+            body = text.split("-----BEGIN PRIVATE KEY-----")[1]
+            body = body.split("-----END PRIVATE KEY-----")[0]
+            outer = _DerReader(base64.b64decode(body)).sequence()
+            outer.integer()  # version
+            algorithm = outer.sequence()
+            if algorithm.oid() != _RSA_ENCRYPTION_OID:
+                raise ValueError("private key is not RSA")
+            return _parse_pkcs1(outer.octet_string())
+        raise ValueError("no supported PEM block")
+    except NotConfiguredError:
+        raise
+    except Exception:
+        raise _fail("could not parse an RSA private key from the "
+                    "file named by AMAZON_PAY_PRIVATE_KEY_PATH") \
+            from None
+
+
+# -- RSASSA-PSS signing (RFC 8017, SHA-256 / MGF1-SHA-256) -------------
+
+def _mgf1(seed: bytes, length: int) -> bytes:
+    out = bytearray()
+    counter = 0
+    while len(out) < length:
+        out += hashlib.sha256(
+            seed + counter.to_bytes(4, "big")).digest()
+        counter += 1
+    return bytes(out[:length])
+
+
+def _pss_sign(message_hash: bytes, modulus: int,
+              private_exponent: int,
+              salt: bytes | None = None) -> bytes:
+    """EMSA-PSS-ENCODE + RSASP1 over an already-computed SHA-256."""
+    h_len = hashlib.sha256().digest_size
+    if salt is None:
+        salt = secrets.token_bytes(PSS_SALT_LENGTH)
+    em_bits = modulus.bit_length() - 1
+    em_len = (em_bits + 7) // 8
+    if em_len < h_len + len(salt) + 2:
+        raise RailError("RSA key too small for RSASSA-PSS/SHA-256")
+    digest = hashlib.sha256(
+        b"\x00" * 8 + message_hash + salt).digest()
+    data_block = b"\x00" * (em_len - len(salt) - h_len - 2) \
+        + b"\x01" + salt
+    masked = bytearray(
+        a ^ b for a, b in
+        zip(data_block, _mgf1(digest, em_len - h_len - 1)))
+    masked[0] &= 0xFF >> (8 * em_len - em_bits)
+    encoded = bytes(masked) + digest + b"\xbc"
+    signature = pow(int.from_bytes(encoded, "big"),
+                    private_exponent, modulus)
+    return signature.to_bytes((modulus.bit_length() + 7) // 8, "big")
+
+
+# -- canonical request (Signature V2, "Signing requests" Step 1) -------
+
+def _canonical_uri(path: str) -> str:
+    return "/".join(urllib.parse.quote(segment, safe="-_.~")
+                    for segment in path.split("/"))
+
+
+def _canonical_request(method: str, path: str, signed_headers: dict,
+                       body: bytes) -> tuple[str, str]:
+    """(canonical request, signed-headers list) for a request."""
+    names = sorted(signed_headers)
+    canonical_headers = "".join(
+        f"{name}:{' '.join(str(signed_headers[name]).split())}\n"
+        for name in names)
+    canonical = "\n".join([
+        method.upper(),
+        _canonical_uri(path),
+        "",  # no operation uses query parameters
+        canonical_headers,
+        ";".join(names),
+        _sha256_hex(body),
+    ])
+    return canonical, ";".join(names)
+
+
+# -- default network opener ---------------------------------------------
+
+def _default_opener(method: str, url: str, headers: dict,
+                    body: bytes) -> tuple[int, bytes]:
+    """One HTTPS call via urllib; HTTP errors are answers, not
+    exceptions. Network failures become RailError with a plain
+    message (no headers, no key material)."""
+    request = urllib.request.Request(
+        url, data=body if body else None, headers=dict(headers),
+        method=method)
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return response.status, response.read()
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read()
+    except (urllib.error.URLError, OSError) as exc:
+        reason = getattr(exc, "reason", exc)
+        raise RailError(
+            "Amazon Pay sandbox request failed before any response: "
+            f"{reason}") from exc
+
 
 class SandboxTransport:
-    """Builds signed-request-ready Amazon Pay sandbox calls.
+    """Signs and sends Amazon Pay sandbox calls.
 
-    Raises NotConfiguredError unless every variable in SANDBOX_ENV_VARS
-    is set. With them set it still sends nothing in this staged build:
-    request() raises NotConfiguredError saying the live transport is
-    not enabled, and build_request() returns the would-be request so
-    a human can inspect exactly what would be signed and sent.
+    Raises NotConfiguredError unless every variable in
+    SANDBOX_ENV_VARS is set and the named private key file loads as
+    an RSA key; in either failure nothing is sent. Otherwise each
+    request is signed with Amazon Pay Signature V2 and sent once
+    through the opener (urllib HTTPS by default; tests inject a fake
+    opener and a fixed clock). build_request() returns the fully
+    signed request for inspection without any network I/O.
     """
 
     mode = "sandbox"
 
-    def __init__(self, env: dict | None = None):
+    def __init__(self, env: dict | None = None, opener=None,
+                 clock=None):
         self._env = env if env is not None else os.environ
+        self._opener = opener if opener is not None else _default_opener
+        self._clock = clock
 
     def missing_credentials(self) -> list[str]:
         return [name for name in SANDBOX_ENV_VARS
@@ -301,38 +518,113 @@ class SandboxTransport:
     def configured(self) -> bool:
         return not self.missing_credentials()
 
-    def build_request(self, operation: str, path_params: dict,
-                      payload: dict, idempotency_key: str | None) -> dict:
-        """The request that would be signed and sent. Pure; no I/O."""
-        method, template = _OPERATION_HTTP[operation]
-        path = template.format(**(path_params or {}))
-        headers = {"Content-Type": "application/json"}
-        if idempotency_key:
-            headers["x-amz-pay-idempotency-key"] = idempotency_key
-        return {
-            "method": method,
-            "url": SANDBOX_BASE + path,
-            "headers": headers,
-            "body": payload or {},
-            "signing": (
-                "Amazon Pay Signature Version 2 over the canonical "
-                "request, using the merchant key pair named by "
-                "AMAZON_PAY_PUBLIC_KEY_ID / AMAZON_PAY_PRIVATE_KEY_PATH"
-            ),
-        }
+    def _now(self) -> datetime:
+        moment = self._clock() if self._clock is not None \
+            else datetime.now(timezone.utc)
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=timezone.utc)
+        return moment.astimezone(timezone.utc)
 
-    def request(self, operation: str, path_params: dict, payload: dict,
-                idempotency_key: str | None) -> dict:
+    def _signed_request(self, operation: str, path_params: dict,
+                        payload: dict,
+                        idempotency_key: str | None) -> dict:
         missing = self.missing_credentials()
         if missing:
             raise NotConfiguredError(
                 "Amazon Pay sandbox transport is not configured: "
                 f"missing {', '.join(missing)}; no call was sent to "
                 "Amazon")
-        raise NotConfiguredError(
-            "Amazon Pay sandbox credentials are present, but the live "
-            "transport is disabled in this staged build; no call was "
-            "sent to Amazon")
+        method, template = _OPERATION_HTTP[operation]
+        path = "/sandbox" + template.format(**(path_params or {}))
+        has_body = method not in ("GET", "DELETE")
+        # Sign exactly the bytes that will be sent.
+        body = json.dumps(payload or {}).encode("utf-8") \
+            if has_body else b""
+        headers = {"accept": "application/json"}
+        if has_body:
+            headers["content-type"] = "application/json"
+        headers["x-amz-pay-date"] = \
+            self._now().strftime("%Y%m%dT%H%M%SZ")
+        headers["x-amz-pay-host"] = _SANDBOX_HOST
+        if idempotency_key:
+            headers["x-amz-pay-idempotency-key"] = idempotency_key
+        headers["x-amz-pay-region"] = _SANDBOX_REGION
+        canonical, signed_names = _canonical_request(
+            method, path, headers, body)
+        string_to_sign = (
+            _SIGNING_ALGORITHM + "\n"
+            + _sha256_hex(canonical.encode("utf-8")))
+        modulus, _public_exponent, private_exponent = \
+            _load_rsa_private_key(
+                str(self._env.get("AMAZON_PAY_PRIVATE_KEY_PATH", "")))
+        signature = _pss_sign(
+            hashlib.sha256(string_to_sign.encode("utf-8")).digest(),
+            modulus, private_exponent)
+        headers["authorization"] = (
+            f"{_SIGNING_ALGORITHM} "
+            f"PublicKeyId="
+            f"{self._env.get('AMAZON_PAY_PUBLIC_KEY_ID', '')}, "
+            f"SignedHeaders={signed_names}, "
+            f"Signature="
+            f"{base64.b64encode(signature).decode('ascii')}")
+        return {
+            "method": method,
+            "url": f"https://{_SANDBOX_HOST}{path}",
+            "headers": headers,
+            "body": body,
+        }
+
+    def build_request(self, operation: str, path_params: dict,
+                      payload: dict, idempotency_key: str | None) -> dict:
+        """The fully signed request, for inspection. No network I/O;
+        reading the private key file is the only I/O."""
+        signed = self._signed_request(operation, path_params, payload,
+                                      idempotency_key)
+        return {
+            "method": signed["method"],
+            "url": signed["url"],
+            "headers": dict(signed["headers"]),
+            "body": signed["body"].decode("utf-8"),
+        }
+
+    def request(self, operation: str, path_params: dict, payload: dict,
+                idempotency_key: str | None) -> dict:
+        signed = self._signed_request(operation, path_params, payload,
+                                      idempotency_key)
+        try:
+            status, response_body = self._opener(
+                signed["method"], signed["url"], signed["headers"],
+                signed["body"])
+        except OSError as exc:
+            raise RailError(
+                "Amazon Pay sandbox request failed before any "
+                f"response: {exc}") from exc
+        if 200 <= status < 300:
+            try:
+                parsed = json.loads(response_body.decode("utf-8")) \
+                    if response_body else {}
+            except (ValueError, UnicodeDecodeError):
+                raise RailError(
+                    f"Amazon Pay sandbox returned HTTP {status} "
+                    "with an unparseable body") from None
+            if not isinstance(parsed, dict):
+                raise RailError(
+                    f"Amazon Pay sandbox returned HTTP {status} "
+                    "with a non-object body")
+            return {"rail": RAIL, "rail_mode": self.mode, **parsed}
+        detail = ""
+        try:
+            error = json.loads(response_body.decode("utf-8"))
+            if isinstance(error, dict):
+                parts = [str(error.get(name, "")).strip()
+                         for name in ("reasonCode", "message")]
+                detail = ": ".join(part for part in parts if part)
+        except (ValueError, UnicodeDecodeError):
+            detail = ""
+        suffix = f": {detail}" if detail else ""
+        raise RailError(
+            f"Amazon Pay sandbox request failed with HTTP "
+            f"{status}{suffix}")
 
 
 # ---------------------------------------------------------------------
