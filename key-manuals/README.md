@@ -30,3 +30,9 @@ plain terms, with a compare-and-contrast of the two paths.
 Amazon manual revision 2026-10-25 (v3): the trust harness at
 full treatment, a dispute-resolution adaptation section, and
 the cleaned shared core.
+
+PayPal manual revision 2026-10-26 (v2.1): the MCP tools line
+now states the eleven tools precisely (three each for Apathy,
+Proven and Anchor, two for Receipts; the composed flow is
+REST-only), and the composed-flow description states plainly
+that a refusal is recorded in the receipt chain too.
