@@ -453,6 +453,43 @@ def main() -> int:
               in bare.missing_credentials()
               and len(flat_calls) == 1)
 
+    # A20: the PSS salt length is the Amazon-verified 32 bytes.
+    # (Amazon's verifier pins the salt length; a salt-20 signature
+    # was rejected live on 2026-10-26 with InvalidRequestSignature
+    # even though its canonical hash matched Amazon's echo exactly.)
+    def _recovered_salt_length(authorization: str) -> int:
+        fields = dict(part.split("=", 1) for part in
+                      authorization.split(" ", 1)[1].split(", "))
+        signature = base64.b64decode(fields["Signature"])
+        em_bits = modulus.bit_length() - 1
+        em_len = (em_bits + 7) // 8
+        encoded = pow(int.from_bytes(signature, "big"),
+                      exponent, modulus).to_bytes(em_len, "big")
+        digest = encoded[em_len - 33:em_len - 1]
+        masked = encoded[:em_len - 33]
+        data_block = bytearray(
+            a ^ b for a, b in
+            zip(masked, amazon_pay._mgf1(digest, em_len - 33)))
+        data_block[0] &= 0xFF >> (8 * em_len - em_bits)
+        separator = data_block.index(1)
+        return len(data_block[separator + 1:])
+
+    salt_calls: list[dict] = []
+
+    def salt_opener(method, url, headers, body):
+        salt_calls.append({"headers": dict(headers)})
+        return 200, b"{}"
+
+    amazon_pay.SandboxTransport(_sandbox_env(key_path),
+                                opener=salt_opener,
+                                clock=_fixed_clock) \
+        .request("create_checkout_session", {}, {}, "sb-salt")
+    check("A20. signature salt length is the Amazon-verified 32",
+          len(salt_calls) == 1
+          and amazon_pay.PSS_SALT_LENGTH == 32
+          and _recovered_salt_length(
+              salt_calls[0]["headers"]["authorization"]) == 32)
+
     passed = sum(1 for _, ok in RESULTS if ok)
     print()
     print(f"{passed}/{len(RESULTS)} checks passed")
