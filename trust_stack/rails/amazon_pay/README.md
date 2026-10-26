@@ -46,8 +46,10 @@ transport is not built.
     private key (PKCS#8 or PKCS#1 PEM) and the PSS padding is
     computed by hand — no new dependencies. It raises
     `NotConfiguredError` unless `AMAZON_PAY_MERCHANT_ID`,
-    `AMAZON_PAY_PUBLIC_KEY_ID`, and `AMAZON_PAY_PRIVATE_KEY_PATH`
-    are all set **and** the named key file loads as RSA; in either
+    `AMAZON_PAY_PUBLIC_KEY_ID`, and a private key — the file named
+    by `AMAZON_PAY_PRIVATE_KEY_PATH`, or PEM text in
+    `AMAZON_PAY_PRIVATE_KEY` for hosts where the key arrives as a
+    secret value — are set **and** the key loads as RSA; in either
     failure nothing is sent. Amazon error responses surface as
     `RailError` carrying the HTTP status and Amazon's
     reasonCode/message — never headers or key material.
@@ -68,9 +70,11 @@ transport is not built.
    was created in Integration Central and the private key (.pem)
    is held by the owner.
 2. Place the private key on the server only, and set
-   `AMAZON_PAY_MERCHANT_ID`, `AMAZON_PAY_PUBLIC_KEY_ID`,
-   `AMAZON_PAY_PRIVATE_KEY_PATH`, plus `AMAZON_PAY_MODE=sandbox`
-   (on Fly, as secrets/volume state — never in the repo).
+   `AMAZON_PAY_MERCHANT_ID`, `AMAZON_PAY_PUBLIC_KEY_ID`, the key
+   (`AMAZON_PAY_PRIVATE_KEY_PATH` to a server-side file, or
+   `AMAZON_PAY_PRIVATE_KEY` with the PEM text as a secret value),
+   plus `AMAZON_PAY_MODE=sandbox` (on Fly, as secrets — never in
+   the repo).
 3. Deploy is a gate decision: this transport landed on a review
    branch first; merging and setting the variables happen only
    after review, and the first live checks are refusal-first
