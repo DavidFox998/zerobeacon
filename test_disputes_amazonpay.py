@@ -501,7 +501,7 @@ def test_adapter_fixture_state_machines():
                                    idempotency_key="unit-2-capture")
 
 
-def test_adapter_sandbox_transport_never_sends():
+def test_adapter_sandbox_transport_refuses_without_usable_credentials():
     amazon_pay = harness.amazon_pay
     transport = amazon_pay.SandboxTransport({})
     assert transport.configured is False
@@ -509,9 +509,16 @@ def test_adapter_sandbox_transport_never_sends():
         transport.request("create_checkout_session", {},
                           {}, "idem")
     assert "no call was sent to Amazon" in str(excinfo.value)
-    request = transport.build_request(
-        "create_checkout_session", {}, {"x": 1}, "idem-9")
-    assert request["method"] == "POST"
-    assert request["url"] == \
-        "https://pay-api.amazon.com/sandbox/v2/checkoutSessions"
-    assert request["headers"]["x-amz-pay-idempotency-key"] == "idem-9"
+    # build_request now returns a *signed* request, so it refuses
+    # without usable credentials too — nothing is built or sent.
+    with pytest.raises(amazon_pay.NotConfiguredError):
+        transport.build_request(
+            "create_checkout_session", {}, {"x": 1}, "idem-9")
+    # All variables present but the key path is unreadable: the
+    # refusal now comes from key loading, and still nothing is sent.
+    full_env = {name: "x" for name in amazon_pay.SANDBOX_ENV_VARS}
+    staged = amazon_pay.SandboxTransport(full_env)
+    assert staged.configured is True
+    with pytest.raises(amazon_pay.NotConfiguredError) as excinfo:
+        staged.request("create_checkout_session", {}, {}, "idem")
+    assert "no call was sent to Amazon" in str(excinfo.value)
