@@ -19,7 +19,7 @@ Transport modes:
   key supplied either as a file named by AMAZON_PAY_PRIVATE_KEY_PATH
   or as PEM text in AMAZON_PAY_PRIVATE_KEY) are set, each call is
   signed with Amazon Pay Signature V2 (AMZN-PAY-RSASSA-PSS-V2:
-  RSASSA-PSS with SHA-256 / MGF1-SHA-256, salt length 20) and sent
+  RSASSA-PSS with SHA-256 / MGF1-SHA-256, salt length 32) and sent
   to the Amazon Pay API v2 sandbox endpoints at
   pay-api.amazon.com/sandbox. Without usable credentials — variables
   missing, or a private key that cannot be loaded as RSA — it
@@ -299,11 +299,15 @@ _OPERATION_HTTP = {
 _SIGNING_ALGORITHM = "AMZN-PAY-RSASSA-PSS-V2"
 _SANDBOX_HOST = "pay-api.amazon.com"
 _SANDBOX_REGION = "na"
-# RSASSA-PSS parameters for Amazon Pay Signature V2, pinned from the
-# EN "Signing requests" doc (developer.amazon.com/docs/amazon-pay-
-# api-v2): SHA-256, MGF1-SHA-256, salt length 20. (A translated doc
-# page says 32; the EN page and its worked example use 20.)
-PSS_SALT_LENGTH = 20
+# RSASSA-PSS parameters for Amazon Pay Signature V2: SHA-256,
+# MGF1-SHA-256, salt length 32. The EN "Signing requests" doc says
+# 20, but Amazon's verifier pins 32 (the value in the translated
+# doc) — proven against the live sandbox on 2026-10-26: a salt-20
+# signature whose canonical-request hash matched Amazon's own echo
+# byte for byte was rejected with InvalidRequestSignature, while
+# the identical request signed with a 32-byte salt passed signature
+# verification and reached parameter validation.
+PSS_SALT_LENGTH = 32
 _RSA_ENCRYPTION_OID = bytes.fromhex("2a864886f70d010101")
 
 
