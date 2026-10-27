@@ -515,7 +515,7 @@ _PAGE = """<!DOCTYPE html>
       <tr><td>Anchor, certificate</td><td><code>POST /api/trust/anchor/parse</code><br><code>POST /api/trust/anchor/verify</code><br><code>POST /api/trust/anchor/registry</code></td><td><code>parse_address</code><br><code>verify_address</code><br><code>registry_info</code></td></tr>
       <tr><td>Receipts, record</td><td><code>POST /api/trust/receipts/append</code><br><code>POST /api/trust/receipts/verify</code></td><td><code>append_receipt</code><br><code>verify_receipts</code></td></tr>
       <tr><td>Disputes, routing</td><td><code>POST /api/trust/disputes/route</code></td><td><code>dispute_route</code></td></tr>
-      <tr><td>Amazon Pay rail (staged, fixture)</td><td><code>POST /api/trust/amazonpay/propose</code><br><code>POST /api/trust/amazonpay/capture</code></td><td>—</td></tr>
+      <tr><td>Amazon Pay rail (sandbox-verified)</td><td><code>POST /api/trust/amazonpay/propose</code><br><code>POST /api/trust/amazonpay/capture</code></td><td>—</td></tr>
     </tbody>
   </table>
   <p>MCP transport for the twelve tools above is <code>POST /api/trust/mcp</code>
@@ -1086,15 +1086,17 @@ async def paypal_capture(request: Request):
     }
 
 
-# -- Amazon Pay gate (STAGED, fixture mode) ------------------------------
+# -- Amazon Pay gate -----------------------------------------------------
 # Same gate contract as PayPal: a purchase proposal runs the composed
 # flow first; only a passing flow may create a checkout session, and
 # capture records the executed payment in Receipts exactly once.
-# The rail adapter is staged: the default (and, without a merchant
-# account, only) transport is the deterministic fixture — labelled
-# rail_mode "fixture" with the adapter's mode note on every response.
-# Amazon Pay merchant account not connected; fixture responses only,
-# no Amazon system was called. No code path here talks to Amazon.
+# The rail adapter is live: its transport is selected by configuration.
+# Without merchant credentials it answers in the deterministic fixture
+# mode — labelled rail_mode "fixture" with the adapter's mode note on
+# every response. With credentials it signs and sends (Amazon Pay
+# Signature V2); the sandbox transport was verified against Amazon's
+# own sandbox on 2026-10-26, and live mode awaits Amazon's account
+# verification (tax identity and bank account on file).
 
 AMAZON_CAPTURED_FILE = "amazon-pay-captured.json"
 _AMAZON_CLIENT = None
