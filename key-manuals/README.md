@@ -36,3 +36,9 @@ now states the eleven tools precisely (three each for Apathy,
 Proven and Anchor, two for Receipts; the composed flow is
 REST-only), and the composed-flow description states plainly
 that a refusal is recorded in the receipt chain too.
+
+Amazon manual revision 2026-10-26 (v3.3): restructured after an
+independent review — quickstart first, the Amazon pipeline
+mapping merged into one section, the Amazon Pay adaptor at full
+treatment (engineering disclosure, setup field notes, and the
+three-hackathon disclosure), and every count re-measured live.
