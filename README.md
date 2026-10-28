@@ -136,25 +136,17 @@ MCP note: `tools/list` exposes 1,003 operations — the 1,000 block tools (MF-01
 
 ---
 
-## Install from Smithery
+## Connect
 
-Install the current Smithery CLI (Node.js 20+), connect ZeroBeacon, and inspect the live tool catalog:
+ZeroBeacon is a remote MCP server — no install, no proxy. Point any MCP client at the direct URL:
 
-```bash
-npm install -g smithery@latest
-smithery auth login
-smithery mcp add https://zerobeacon.ai/mcp --id zerobeacon
-smithery tool list zerobeacon
+```json
+{"mcpServers":{"zerobeacon":{"url":"https://zerobeacon.ai/mcp"}}}
 ```
 
-To add the remote server directly to a supported local client, use:
+Free tier: the first 100 tools need no key. Paid tiers pass `X-API-Key: zbk_…` — get a key at https://zerobeacon.ai/pricing.
 
-```bash
-smithery mcp add https://zerobeacon.ai/mcp --client claude
-# Replace claude with another supported client name when needed.
-```
-
-Smithery listing: https://smithery.ai/servers/davidjfox998/zerobeacon-1050
+Also listed in the Smithery registry: https://smithery.ai/servers/davidjfox998/zerobeacon-1050
 
 ---
 
