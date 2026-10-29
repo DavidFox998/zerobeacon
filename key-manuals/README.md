@@ -42,3 +42,11 @@ independent review — quickstart first, the Amazon pipeline
 mapping merged into one section, the Amazon Pay adaptor at full
 treatment (engineering disclosure, setup field notes, and the
 three-hackathon disclosure), and every count re-measured live.
+Amazon manual revision 2026-10-29 (v3.4): new section 9 —
+Alexa placed inside the environment: the tenant contract
+reverse-engineered from the Meta build's reference
+implementation (Environment Protocol v0), the household
+placement designed and built the same day (public:
+alexa-environment), the consent and custody gates, spoken
+named refusals, and the placement's honest limits. Honest
+status moves to section 10.
