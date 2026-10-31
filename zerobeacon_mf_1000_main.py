@@ -731,7 +731,7 @@ async def landing():
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZeroBeacon.ai — The right call is the only callable call</title>
-<meta name="description" content="ZeroBeacon is a collision-anchored MCP tool server for Alexa+ commerce: 1,052 tools at precise addresses, every order provable end to end. Built for Amazon Build-Ship-Shape. Free tier live — no key needed.">
+<meta name="description" content="ZeroBeacon is a collision-anchored tool server built for AI agents: 1,052 tools in 21 blocks — commerce and trust, a formal-mathematics engine, everyday operations, and a meta-routing Brain — 1,003 of them callable over MCP, every response carrying a verifiable beacon. Free tier live, no key needed.">
 <style>
   *{{box-sizing:border-box;margin:0;padding:0}}
   body{{background:#070709;color:#EAEAEA;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:48px 20px;max-width:920px;margin:0 auto}}
@@ -800,23 +800,27 @@ async def landing():
 
   <h1>ZERO<span>BEACON</span>.AI</h1>
   <p class="tagline">
-    <b>If you run commerce on Alexa+, you cannot afford a misrouted tool call.</b>
-    ZeroBeacon makes the right call the only callable call — 1,052 tools at precise
-    addresses, so an agent can never call the right tool name at the wrong address.
+    <b>Built for AI agents — a tool server, not a demo.</b>
+    ZeroBeacon hosts 1,052 tools in 21 blocks: commerce and trust, a formal-mathematics
+    engine, everyday operations, and a Brain that routes among them. Every tool sits at
+    one precise address, and every response carries the same collision-anchored beacon —
+    so an agent can never call the right tool name at the wrong address, and anything a
+    tool claims can be checked afterwards against the record.
   </p>
-  <p class="stats">1052 tools &nbsp;·&nbsp; 21 blocks &nbsp;·&nbsp; 9 controlled collisions &nbsp;·&nbsp; every delivery proven</p>
+  <p class="stats">1052 tools in the catalogue &nbsp;·&nbsp; 1003 callable over MCP &nbsp;·&nbsp; 21 blocks &nbsp;·&nbsp; 4 domains &nbsp;·&nbsp; every response beacon-anchored</p>
 
-  <div class="box contest">
-    <div class="box-title">Built for Amazon Build-Ship-Shape · Alexa+ track</div>
-    <p>ZeroBeacon was built and launched publicly for this contest. The demo is one
-    order's full life — checkout, delivery proof, dispute — with every step verifiable
-    afterwards. No slides about a server: the server is live, and the free tier
-    answers with no key.</p>
+  <div class="box">
+    <div class="box-title">What this is</div>
+    <p>ZeroBeacon is an independent, live product. It began as one server for agent
+    commerce and grew into a general tool platform for AI agents: the same addressing
+    and record machinery that settles an order also answers formal-mathematics queries,
+    drafts a will, and routes a swarm vote. The server is live now, the code is public,
+    and the free tier answers with no key.</p>
     <div class="links">
       <a href="https://github.com/DavidFox998/zerobeacon" target="_blank" rel="noopener">GitHub — the code</a>
-      <a href="https://smithery.ai/servers/davidjfox998/zerobeacon-1050" target="_blank" rel="noopener">Smithery listing</a>
       <a href="/llms.txt">llms.txt — for agents</a>
       <a href="/docs">API docs</a>
+      <a href="https://rapidapi.com/davidjfox998/api/zerobeacon-ai" target="_blank" rel="noopener">RapidAPI Marketplace</a>
     </div>
   </div>
 
@@ -826,9 +830,37 @@ async def landing():
     thousand tools they do — the same name lives in block after block. An agent
     that calls a <i>name</i> instead of an <i>address</i> can check out the wrong
     cart, the wrong size, the wrong color, at the wrong tier — and never know.</p>
-    <p>ZeroBeacon anchors every tool to a block address. The name picks the job;
-    the address picks the exact tool, tier, and variant. A retried call counts
-    once. And every claim a tool makes can be checked later against the record.</p>
+    <p>ZeroBeacon's catalogue holds 699 distinct tool names, and 296 of those names
+    exist in more than one block. ZeroBeacon anchors every tool to a block address.
+    The name picks the job; the address picks the exact tool, tier, and variant.
+    A retried call counts once. And every claim a tool makes can be checked later
+    against the record.</p>
+  </div>
+
+  <div class="box">
+    <div class="box-title">Four domains, one address space</div>
+    <div class="steps">
+      <div class="step">
+        <div class="n">TOOLS 1–300</div>
+        <div class="t">Market Router</div>
+        <div class="d">Payment routing, escrow, delivery proof, budget management, notary attestation, trust verification.</div>
+      </div>
+      <div class="step">
+        <div class="n">TOOLS 301–700</div>
+        <div class="t">Math Engine</div>
+        <div class="d">Verification queries over formal mathematics — Arakelov geometry, Riemann Hypothesis, BSD, Navier–Stokes, Yang–Mills, and P vs NP formalizations.</div>
+      </div>
+      <div class="step">
+        <div class="n">TOOLS 701–1000</div>
+        <div class="t">Amplum Everyday</div>
+        <div class="d">Scheduling, memory management, legal document generation, will drafting, mesh treasury operations.</div>
+      </div>
+      <div class="step">
+        <div class="n">TOOLS 1001–1052</div>
+        <div class="t">Brain Router</div>
+        <div class="d">Meta-routing, chain-of-thought, think loops, swarm consensus, and popcount-gated sparse activation. Watch it fire: <a href="/brain/heartbeat">/brain/heartbeat</a> renders the Brain's firing density as a live trace.</div>
+      </div>
+    </div>
   </div>
 
   <div class="box">
@@ -856,6 +888,15 @@ async def landing():
   </div>
 
   <div class="box">
+    <div class="box-title">Measured, not asserted</div>
+    <p>Trust calls here do not return opinions. Every trust call writes a receipt —
+    what was claimed, what was measured, and the verdict. A refusal writes a receipt
+    too, naming the reason, and a refusal never produces a certificate. The record
+    can be read back afterwards. Do not take this page's word for any of it: call
+    the server and check the record yourself.</p>
+  </div>
+
+  <div class="box">
     <div class="box-title">Connect in one minute</div>
     <div class="snippet">{{
   "mcpServers": {{
@@ -864,9 +905,9 @@ async def landing():
     }}
   }}
 }}</div>
-    <p>Point any MCP client at <code>https://zerobeacon.ai/mcp</code>. The first 100
-    tools answer with no key. Paid tiers unlock by API key — delivered by email
-    after checkout, and shown on the success page.</p>
+    <p>Point any MCP client at <code>https://zerobeacon.ai/mcp</code> — tools/list
+    returns 1,003 tools. The first 100 tools answer with no key. Paid tiers unlock
+    by API key — delivered by email after checkout, and shown on the success page.</p>
   </div>
 
   <div class="beacon-box">{{
@@ -903,7 +944,7 @@ async def landing():
       <div class="tier">
         <div class="name">ENTERPRISE</div>
         <div class="price">$199 / mo</div>
-        <div class="tools">All 1052 tools — research grade</div>
+        <div class="tools">All 1052 tools — full catalogue</div>
       </div>
     </div>
   </div>
@@ -930,10 +971,10 @@ async def landing():
 
   <div class="box">
     <div class="box-title">Honest status</div>
-    <p>ZeroBeacon is new and independent, launched publicly for this contest. It
-    has no customers yet — so no testimonials, no logos, no inflated numbers.
-    What it has is a live server, public code, a Smithery listing, and a free
-    tier you can call right now. Judge it by calling it.</p>
+    <p>ZeroBeacon is new and independent. It has no customers yet — so no testimonials,
+    no logos, no inflated numbers. What it has is a live server, public code, a RapidAPI
+    listing, and a free tier you can call right now. The counts on this page are the
+    server's own, measured October 2026. Judge it by calling it.</p>
   </div>
 
 {_resend_store_warning}{_resend_key_warning}  <div class="links">
@@ -941,12 +982,12 @@ async def landing():
     <a href="https://api.zerobeacon.ai">api.zerobeacon.ai</a>
     <a href="/docs">API docs</a>
     <a href="/health">/health</a>
+    <a href="/brain/heartbeat">/brain/heartbeat</a>
     <a href="/key/check">/key/check</a>
     <a href="/pricing">/pricing</a>
     <a href="https://paypal.me/davidfox223" class="paypal">PayPal — davidfox223</a>
     <a href="https://zerobeacon.ai/pricing" class="stripe">Stripe Checkout</a>
     <a href="https://rapidapi.com/davidjfox998/api/zerobeacon-ai" class="rapidapi" target="_blank" rel="noopener">RapidAPI Marketplace</a>
-    <a href="https://smithery.ai/servers/davidjfox998/zerobeacon-1050" target="_blank" rel="noopener" style="color:#a78bfa;border-color:#2d1f4a;">Smithery MCP</a>
   </div>
 
   <p class="moat">
