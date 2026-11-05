@@ -169,8 +169,9 @@ def test_module_endpoints_and_mcp_list(tmp_path):
         "parse_address", "verify_address", "registry_info",
         "append_receipt", "verify_receipts",
         "dispute_route",
+        "bundle_lock", "bundle_verify",
     ]
-    assert len(names) == 12
+    assert len(names) == 14
     assert "receipts_mcp_gap" not in listed.json()["result"]
 
     init = client.post("/api/trust/mcp", headers=headers, json={

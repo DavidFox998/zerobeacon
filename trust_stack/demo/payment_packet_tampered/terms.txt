@@ -1,0 +1,3 @@
+The packet is the payment claim. If any file in this packet changes
+after locking, the harness refuses the payment and names the file.
+Measured, not minted - proven, not asserted.

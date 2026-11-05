@@ -1,0 +1,5 @@
+Invoice ZB-PACKET-001
+Seller: ZeroBeacon certified service
+Item: Trust harness inspection
+Amount due: 250.00 USD
+Terms: payment is created only after the packet lock verifies.

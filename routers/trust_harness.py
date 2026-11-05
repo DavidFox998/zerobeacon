@@ -66,6 +66,8 @@ anchor_mcp = _load("anchor_mcp", _ROOT / "anchor" / "anchor_mcp.py")
 receipts_mcp = _load("receipts_mcp", _ROOT / "receipts" / "receipts_mcp.py")
 disputes = _load("disputes", _ROOT / "disputes" / "disputes.py")
 disputes_mcp = _load("disputes_mcp", _ROOT / "disputes" / "disputes_mcp.py")
+bundle_lock = _load("bundle_lock", _ROOT / "bundles" / "bundle_lock.py")
+bundles_mcp = _load("bundles_mcp", _ROOT / "bundles" / "bundles_mcp.py")
 amazon_pay = _load(
     "amazon_pay", _ROOT / "rails" / "amazon_pay" / "amazon_pay.py")
 
@@ -142,6 +144,65 @@ def _disputes_call(name: str, arguments: dict) -> dict:
         name, arguments, evidence_provider=_dispute_evidence)
 
 
+BUNDLE_LOCKS_FILE = "bundle-locks.json"
+
+
+def _bundle_locks_path() -> str:
+    return os.path.join(_data_dir(), BUNDLE_LOCKS_FILE)
+
+
+def _bundle_locks() -> dict:
+    try:
+        with open(_bundle_locks_path(), "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+class _BundleStore:
+    """Persist lock records under their labels, beside the receipts chain."""
+
+    def save(self, label: str, record: dict) -> None:
+        path = _bundle_locks_path()
+        with _LOCK:
+            locks = _bundle_locks()
+            locks[label] = record
+            os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(locks, handle)
+            os.chmod(path, 0o600)
+
+    def load(self, label: str) -> dict | None:
+        record = _bundle_locks().get(label)
+        return record if isinstance(record, dict) else None
+
+
+_BUNDLE_STORE = _BundleStore()
+
+
+def _bundles_call(name: str, arguments: dict) -> dict:
+    return bundles_mcp.call_tool(name, arguments, store=_BUNDLE_STORE)
+
+
+def _resolve_bundle_record(body: dict) -> tuple[dict | None, str | None]:
+    """A verify's lock record: an explicit record object wins; else the
+    record stored under the label. (None, error) when neither resolves."""
+    record = body.get("record")
+    if record is not None:
+        if isinstance(record, dict):
+            return record, None
+        return None, "record must be an object"
+    label = body.get("label")
+    if isinstance(label, str) and label.strip():
+        stored = _BUNDLE_STORE.load(label)
+        if stored is not None:
+            return stored, None
+        return None, f"no lock record stored under label {label!r}"
+    return None, "record object or label is required"
+
+
 _DISPATCH = {
     "audit_repo": apathy_mcp.call_tool,
     "check_manifest": apathy_mcp.call_tool,
@@ -155,6 +216,8 @@ _DISPATCH = {
     "append_receipt": _receipts_call,
     "verify_receipts": _receipts_call,
     "dispute_route": _disputes_call,
+    "bundle_lock": _bundles_call,
+    "bundle_verify": _bundles_call,
 }
 
 HARNESS_TOOL_NAMES = tuple(_DISPATCH)
@@ -515,10 +578,12 @@ _PAGE = """<!DOCTYPE html>
       <tr><td>Anchor, certificate</td><td><code>POST /api/trust/anchor/parse</code><br><code>POST /api/trust/anchor/verify</code><br><code>POST /api/trust/anchor/registry</code></td><td><code>parse_address</code><br><code>verify_address</code><br><code>registry_info</code></td></tr>
       <tr><td>Receipts, record</td><td><code>POST /api/trust/receipts/append</code><br><code>POST /api/trust/receipts/verify</code></td><td><code>append_receipt</code><br><code>verify_receipts</code></td></tr>
       <tr><td>Disputes, routing</td><td><code>POST /api/trust/disputes/route</code></td><td><code>dispute_route</code></td></tr>
+      <tr><td>Bundle Lock, folder seal</td><td><code>POST /api/trust/bundles/lock</code><br><code>POST /api/trust/bundles/verify</code></td><td><code>bundle_lock</code><br><code>bundle_verify</code></td></tr>
+      <tr><td>PayPal packet gate</td><td><code>POST /api/trust/paypal/propose-packet</code></td><td>—</td></tr>
       <tr><td>Amazon Pay rail (staged, fixture)</td><td><code>POST /api/trust/amazonpay/propose</code><br><code>POST /api/trust/amazonpay/capture</code></td><td>—</td></tr>
     </tbody>
   </table>
-  <p>MCP transport for the twelve tools above is <code>POST /api/trust/mcp</code>
+  <p>MCP transport for the fourteen tools above is <code>POST /api/trust/mcp</code>
   (JSON-RPC, protocol 2025-11-25). The catalogue <code>POST /mcp</code> list
   is unchanged.</p>
 
@@ -531,6 +596,13 @@ _PAGE = """<!DOCTYPE html>
     ISSUED in the signed registry, or a refusal that names the failed check.
     A receipt is recorded on both paths. No certificate is returned when a
     check fails.</p>
+    <p><code>Bundle Lock</code> seals a whole folder the same way: every file
+    fingerprinted, the canonical <code>path:hash</code> table hashed into one
+    bundle certificate, the certificate beacon-stamped, and verify naming any
+    file that changed, was added, or was removed. The PayPal packet gate
+    (<code>POST /api/trust/paypal/propose-packet</code>) verifies a payment's
+    evidence packet against its lock before the flow runs — a changed packet
+    is refused by name and never reaches PayPal.</p>
     <p>When the server holds an Anchor signing secret, a passing flow also
     records the certified address once in a separate live registry and
     re-signs it (<code>registry_source: "live"</code>); a refusal never
@@ -722,6 +794,79 @@ async def dispute_route_endpoint(request: Request):
     return disputes.route_dispute(rail, purchase, bundle)
 
 
+@router.post("/bundles/lock")
+async def bundle_lock_endpoint(request: Request):
+    """Lock a folder: fingerprint every file, hash the canonical
+    path:hash table into one bundle certificate, stamp it with the
+    beacon, persist the record under its label, and record the lock
+    in Receipts."""
+    body, err = _read_json(await request.body())
+    if err:
+        return err
+    folder = body.get("folder")
+    label = body.get("label")
+    if not isinstance(folder, str) or not folder.strip():
+        return JSONResponse(
+            {"ok": False, "error": "folder is required"}, status_code=400)
+    if not isinstance(label, str) or not label.strip():
+        return JSONResponse(
+            {"ok": False, "error": "label is required"}, status_code=400)
+    try:
+        record = bundle_lock.lock_folder(folder, label)
+    except (ValueError, OSError) as exc:
+        return JSONResponse(
+            {"ok": False, "error": str(exc)}, status_code=400)
+    _BUNDLE_STORE.save(label, record)
+    recorded = record_receipt(
+        "trust-bundles",
+        {"method": "POST", "path": "/api/trust/bundles/lock",
+         "label": label, "certificate": record["certificate"],
+         "beacon": record["beacon"], "file_count": record["file_count"]},
+        "bundle_locked",
+    )
+    return {
+        "ok": True,
+        "record": record,
+        "receipt": recorded["receipt"],
+        "receipt_verifies": recorded["bundle_ok"],
+    }
+
+
+@router.post("/bundles/verify")
+async def bundle_verify_endpoint(request: Request):
+    """Verify a folder against its lock record. LOCK HOLDS, or BROKEN
+    with the changed / added / removed files named. The verdict is
+    recorded in Receipts either way."""
+    body, err = _read_json(await request.body())
+    if err:
+        return err
+    folder = body.get("folder")
+    if not isinstance(folder, str) or not folder.strip():
+        return JSONResponse(
+            {"ok": False, "error": "folder is required"}, status_code=400)
+    record, problem = _resolve_bundle_record(body)
+    if record is None:
+        return JSONResponse(
+            {"ok": False, "error": problem}, status_code=400)
+    report = bundle_lock.verify_folder(folder, record)
+    recorded = record_receipt(
+        "trust-bundles",
+        {"method": "POST", "path": "/api/trust/bundles/verify",
+         "label": report.get("label"),
+         "certificate": report.get("certificate"),
+         "verdict": report["verdict"],
+         "changed": report.get("changed", []),
+         "added": report.get("added", []),
+         "removed": report.get("removed", [])},
+        "bundle_lock_holds" if report["ok"] else "bundle_broken",
+    )
+    return {
+        **report,
+        "receipt": recorded["receipt"],
+        "receipt_verifies": recorded["bundle_ok"],
+    }
+
+
 @router.post("/flow")
 async def trust_flow(request: Request):
     body, err = _read_json(await request.body())
@@ -757,6 +902,7 @@ async def trust_mcp(request: Request):
             + list(anchor_mcp.TOOLS)
             + list(receipts_mcp.TOOLS)
             + list(disputes_mcp.TOOLS)
+            + list(bundles_mcp.TOOLS)
         )
         return {"jsonrpc": "2.0", "id": mid, "result": {"tools": tools}}
     if method == "tools/call":
@@ -915,6 +1061,85 @@ async def paypal_status(request: Request):
     }
 
 
+def _paypal_propose_core(proposal: dict, purchase: dict, amount: str,
+                         host: str, packet: dict | None = None):
+    """The PayPal gate, shared by /paypal/propose and the packet gate:
+    the composed flow runs first; only a passing flow creates an order.
+    `packet`, when given, is the Bundle Lock report that already held —
+    it rides along in the response as the packet half of the evidence."""
+    gate = run_flow(proposal, host)
+    certificate = gate.get("certificate")
+    extra = {"packet": packet} if packet is not None else {}
+    if certificate is None:
+        return {
+            "ok": False,
+            "gate": "refused",
+            "refusal": gate.get("refusal"),
+            "certificate": None,
+            "paypal": None,
+            "receipt": gate.get("receipt"),
+            "receipt_verifies": gate.get("receipt_verifies"),
+            **extra,
+        }
+    cfg = _paypal_config()
+    if not cfg["configured"]:
+        return {
+            "ok": True,
+            "gate": "passed",
+            "certificate": certificate,
+            "paypal": {"status": "unconfigured", "environment": cfg["environment"]},
+            "receipt": gate.get("receipt"),
+            "receipt_verifies": gate.get("receipt_verifies"),
+            **extra,
+        }
+    token, error = _paypal_access_token(cfg)
+    if token is None:
+        return JSONResponse(
+            {
+                "ok": False,
+                "gate": "passed",
+                "certificate": certificate,
+                "paypal": {"status": "auth_failed", **(error or {})},
+                **extra,
+            },
+            status_code=502,
+        )
+    status, payload = _paypal_create_order(cfg, token, purchase, amount, certificate)
+    if status not in (200, 201) or "id" not in payload:
+        return JSONResponse(
+            {
+                "ok": False,
+                "gate": "passed",
+                "certificate": certificate,
+                "paypal": {
+                    "status": "order_failed",
+                    "http_status": status,
+                    "paypal": payload,
+                },
+                **extra,
+            },
+            status_code=502,
+        )
+    approve_url = next(
+        (link.get("href") for link in payload.get("links", []) if link.get("rel") == "approve"),
+        None,
+    )
+    return {
+        "ok": True,
+        "gate": "passed",
+        "certificate": certificate,
+        "paypal": {
+            "status": "created",
+            "order_id": payload["id"],
+            "approve_url": approve_url,
+            "environment": cfg["environment"],
+        },
+        "receipt": gate.get("receipt"),
+        "receipt_verifies": gate.get("receipt_verifies"),
+        **extra,
+    }
+
+
 @router.post("/paypal/propose")
 async def paypal_propose(request: Request):
     body, err = _read_json(await request.body())
@@ -937,71 +1162,84 @@ async def paypal_propose(request: Request):
             status_code=400,
         )
     host = request.url.hostname or "zerobeacon"
-    gate = run_flow(proposal, host)
-    certificate = gate.get("certificate")
-    if certificate is None:
+    return _paypal_propose_core(proposal, purchase, amount, host)
+
+
+@router.post("/paypal/propose-packet")
+async def paypal_propose_packet(request: Request):
+    """The packet gate: a purchase whose evidence packet is a locked
+    folder. The Bundle Lock verifies FIRST — a packet that changed
+    after locking (any file changed, added, or removed, each named)
+    is refused before the composed flow runs and before PayPal is
+    ever called, and the refusal is recorded in Receipts. A packet
+    that holds then faces the full composed flow, exactly as
+    /paypal/propose."""
+    body, err = _read_json(await request.body())
+    if err:
+        return err
+    proposal = body.get("proposal")
+    purchase = body.get("purchase")
+    packet = body.get("packet")
+    if not isinstance(proposal, dict) or not isinstance(purchase, dict) \
+            or not isinstance(packet, dict):
+        return JSONResponse(
+            {"ok": False,
+             "error": "proposal, purchase and packet objects are required"},
+            status_code=400,
+        )
+    amount_ok, amount = _amount_ok(purchase.get("amount_usd", ""))
+    if not amount_ok:
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": "purchase.amount_usd must be a positive amount with at most 2 decimal places",
+            },
+            status_code=400,
+        )
+    folder = packet.get("folder")
+    if not isinstance(folder, str) or not folder.strip():
+        return JSONResponse(
+            {"ok": False, "error": "packet.folder is required"},
+            status_code=400,
+        )
+    record, problem = _resolve_bundle_record(packet)
+    if record is None:
+        return JSONResponse(
+            {"ok": False, "error": problem}, status_code=400)
+    report = bundle_lock.verify_folder(folder, record)
+    if not report["ok"]:
+        recorded = record_receipt(
+            "trust-paypal",
+            {"method": "POST", "path": "/api/trust/paypal/propose-packet",
+             "label": report.get("label"),
+             "certificate": report.get("certificate"),
+             "verdict": report["verdict"],
+             "changed": report.get("changed", []),
+             "added": report.get("added", []),
+             "removed": report.get("removed", [])},
+            "refusal:bundle_lock",
+        )
         return {
             "ok": False,
             "gate": "refused",
-            "refusal": gate.get("refusal"),
+            "refusal": {"failed_checks": [{
+                "check": "bundle_lock",
+                "verdict": report["verdict"],
+                "record_ok": report.get("record_ok"),
+                "record_problem": report.get("record_problem"),
+                "changed": report.get("changed", []),
+                "added": report.get("added", []),
+                "removed": report.get("removed", []),
+            }]},
             "certificate": None,
             "paypal": None,
-            "receipt": gate.get("receipt"),
-            "receipt_verifies": gate.get("receipt_verifies"),
+            "packet": report,
+            "receipt": recorded["receipt"],
+            "receipt_verifies": recorded["bundle_ok"],
         }
-    cfg = _paypal_config()
-    if not cfg["configured"]:
-        return {
-            "ok": True,
-            "gate": "passed",
-            "certificate": certificate,
-            "paypal": {"status": "unconfigured", "environment": cfg["environment"]},
-            "receipt": gate.get("receipt"),
-            "receipt_verifies": gate.get("receipt_verifies"),
-        }
-    token, error = _paypal_access_token(cfg)
-    if token is None:
-        return JSONResponse(
-            {
-                "ok": False,
-                "gate": "passed",
-                "certificate": certificate,
-                "paypal": {"status": "auth_failed", **(error or {})},
-            },
-            status_code=502,
-        )
-    status, payload = _paypal_create_order(cfg, token, purchase, amount, certificate)
-    if status not in (200, 201) or "id" not in payload:
-        return JSONResponse(
-            {
-                "ok": False,
-                "gate": "passed",
-                "certificate": certificate,
-                "paypal": {
-                    "status": "order_failed",
-                    "http_status": status,
-                    "paypal": payload,
-                },
-            },
-            status_code=502,
-        )
-    approve_url = next(
-        (link.get("href") for link in payload.get("links", []) if link.get("rel") == "approve"),
-        None,
-    )
-    return {
-        "ok": True,
-        "gate": "passed",
-        "certificate": certificate,
-        "paypal": {
-            "status": "created",
-            "order_id": payload["id"],
-            "approve_url": approve_url,
-            "environment": cfg["environment"],
-        },
-        "receipt": gate.get("receipt"),
-        "receipt_verifies": gate.get("receipt_verifies"),
-    }
+    host = request.url.hostname or "zerobeacon"
+    return _paypal_propose_core(proposal, purchase, amount, host,
+                                packet=report)
 
 
 @router.post("/paypal/capture")

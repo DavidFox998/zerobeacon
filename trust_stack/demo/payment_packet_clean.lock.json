@@ -1,0 +1,24 @@
+{
+  "format": "bundle-lock/1",
+  "label": "payment-packet-clean",
+  "folder": "payment_packet_clean",
+  "certificate": "06bedb3644b1dbc343f6b97241520a21ab66cc850df2248311f1921d8e4734fa",
+  "beacon_p": 113171257,
+  "beacon": "f578a6c0",
+  "file_count": 4,
+  "total_bytes": 511,
+  "manifest": {
+    "invoice.txt": "c9d6a0c8265d22e3cc50631b2d33dad6e04b66bae8f016df9ec7f55c1841bbd6",
+    "items.csv": "479a086ac0f3888faf05989cb0b0e696deaa82c0dcc77a74a5bf94c9fdae3b91",
+    "sub/shipping.txt": "b04fdc49e38cd96202dd3c6d3abebd5f59ee2517a2ca6e07d1ac848947bbf5cc",
+    "terms.txt": "10fec51648d6ef7b8ff4222e05d5da8bb07ab550498e0afb0d2890d65bdd3608"
+  },
+  "sizes": {
+    "invoice.txt": 175,
+    "items.csv": 48,
+    "sub/shipping.txt": 108,
+    "terms.txt": 180
+  },
+  "skipped": [],
+  "locked_at": "2026-11-05T14:32:12-08:00"
+}
