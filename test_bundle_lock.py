@@ -185,6 +185,170 @@ def test_bundled_payment_packet_clean_holds_tampered_breaks():
     assert broken["changed"] == ["invoice.txt"]
 
 
+# -- bundle-lock/2: directories and symlinks --------------------------------
+
+def _v2_folder(root: Path) -> Path:
+    root.mkdir(parents=True)
+    (root / "letter.txt").write_text(_LETTER, encoding="utf-8")
+    (root / "figures.csv").write_text(_FIGURES, encoding="utf-8")
+    (root / "sub").mkdir()
+    (root / "sub" / "appendix.md").write_text(_APPENDIX, encoding="utf-8")
+    (root / "empty_dir").mkdir()
+    os.symlink("letter.txt", root / "letter_link")
+    os.symlink("no/such/target.txt", root / "dangling_link")
+    return root
+
+
+def test_v2_lock_records_directories_and_symlinks(tmp_path):
+    bl = harness.bundle_lock
+    folder = _v2_folder(tmp_path / "bundle")
+    record = bl.lock_folder(folder, "v2")
+    assert record["format"] == "bundle-lock/2"
+    assert record["directories"] == ["empty_dir", "sub"]
+    assert record["directory_count"] == 2
+    assert record["symlinks"] == {
+        "dangling_link": "no/such/target.txt",
+        "letter_link": "letter.txt",
+    }
+    assert record["symlink_count"] == 2
+    report = bl.verify_folder(folder, record)
+    assert report["verdict"] == "LOCK HOLDS"
+    assert report["dirs_added"] == [] and report["dirs_removed"] == []
+    assert report["links_changed"] == []
+
+
+def test_v2_empty_dir_added_detected(tmp_path):
+    bl = harness.bundle_lock
+    folder = _v2_folder(tmp_path / "bundle")
+    record = bl.lock_folder(folder, "v2")
+    (folder / "late_dir").mkdir()
+    report = bl.verify_folder(folder, record)
+    assert report["verdict"] == "BROKEN"
+    assert report["dirs_added"] == ["late_dir"]
+
+
+def test_v2_empty_dir_removed_detected(tmp_path):
+    bl = harness.bundle_lock
+    folder = _v2_folder(tmp_path / "bundle")
+    record = bl.lock_folder(folder, "v2")
+    (folder / "empty_dir").rmdir()
+    report = bl.verify_folder(folder, record)
+    assert report["verdict"] == "BROKEN"
+    assert report["dirs_removed"] == ["empty_dir"]
+
+
+def test_v2_file_swapped_for_dangling_symlink_detected(tmp_path):
+    """THE v1 hole: a sealed file replaced by a dangling symlink at
+    the same path verified as LOCK HOLDS under bundle-lock/1."""
+    bl = harness.bundle_lock
+    folder = _v2_folder(tmp_path / "bundle")
+    record = bl.lock_folder(folder, "v2")
+    (folder / "letter.txt").unlink()
+    os.symlink("no/such/target.txt", folder / "letter.txt")
+    report = bl.verify_folder(folder, record)
+    assert report["verdict"] == "BROKEN"
+    assert report["removed"] == ["letter.txt"]
+    assert report["links_added"] == ["letter.txt"]
+
+
+def test_v2_symlink_retarget_is_changed(tmp_path):
+    bl = harness.bundle_lock
+    folder = _v2_folder(tmp_path / "bundle")
+    record = bl.lock_folder(folder, "v2")
+    (folder / "letter_link").unlink()
+    os.symlink("figures.csv", folder / "letter_link")
+    report = bl.verify_folder(folder, record)
+    assert report["verdict"] == "BROKEN"
+    assert report["links_changed"] == ["letter_link"]
+
+
+def test_v2_dangling_symlink_removed_detected(tmp_path):
+    bl = harness.bundle_lock
+    folder = _v2_folder(tmp_path / "bundle")
+    record = bl.lock_folder(folder, "v2")
+    (folder / "dangling_link").unlink()
+    report = bl.verify_folder(folder, record)
+    assert report["verdict"] == "BROKEN"
+    assert report["links_removed"] == ["dangling_link"]
+
+
+def test_v2_edited_record_breaks_on_itself(tmp_path):
+    bl = harness.bundle_lock
+    folder = _v2_folder(tmp_path / "bundle")
+    record = bl.lock_folder(folder, "v2")
+    forged = json.loads(json.dumps(record))
+    forged["directories"] = ["sub"]
+    report = bl.verify_folder(folder, forged)
+    assert report["verdict"] == "BROKEN"
+    assert report["record_ok"] is False
+
+
+def _v1_record_for(folder: Path, label: str = "school-v1") -> dict:
+    """A bundle-lock/1 record built by the /1 rules, as records in
+    the wild were built before /2 existed."""
+    bl = harness.bundle_lock
+    manifest, sizes, skipped = bl.scan_folder(folder)
+    certificate = bl.certificate_from_manifest(manifest)
+    beacon_p, stamp = bl.beacon_for(certificate)
+    return {
+        "format": "bundle-lock/1",
+        "label": label,
+        "folder": folder.name,
+        "certificate": certificate,
+        "beacon_p": beacon_p,
+        "beacon": stamp,
+        "file_count": len(manifest),
+        "total_bytes": sum(sizes.values()),
+        "manifest": manifest,
+        "sizes": sizes,
+        "skipped": skipped,
+        "locked_at": "2026-11-05T00:00:00-08:00",
+    }
+
+
+def test_v1_record_still_verifies(tmp_path):
+    bl = harness.bundle_lock
+    folder = _school_folder(tmp_path / "bundle")
+    record = _v1_record_for(folder)
+    report = bl.verify_folder(folder, record)
+    assert report["verdict"] == "LOCK HOLDS"
+    assert "dirs_added" not in report  # /1 reports keep the /1 shape
+
+
+def test_v1_tamper_still_refused(tmp_path):
+    bl = harness.bundle_lock
+    folder = _school_folder(tmp_path / "bundle")
+    record = _v1_record_for(folder)
+    (folder / "figures.csv").write_text(
+        _FIGURES.replace("desks,25", "desks,26"), encoding="utf-8")
+    report = bl.verify_folder(folder, record)
+    assert report["verdict"] == "BROKEN"
+    assert report["changed"] == ["figures.csv"]
+
+
+def test_v1_blind_spots_are_the_v1_contract(tmp_path):
+    """The measured /1 scope, preserved exactly: an added empty
+    folder and a planted dangling symlink are invisible (LOCK
+    HOLDS), and a file swapped for a dangling symlink surfaces only
+    as a bare removal — the link itself is never named, because /1
+    reports carry no symlink entries at all. /2 closes all three."""
+    bl = harness.bundle_lock
+    folder = _school_folder(tmp_path / "bundle")
+    record = _v1_record_for(folder)
+    (folder / "new_empty").mkdir()
+    assert bl.verify_folder(folder, record)["verdict"] == "LOCK HOLDS"
+    (folder / "new_empty").rmdir()
+    os.symlink("no/such/target.txt", folder / "planted_link")
+    assert bl.verify_folder(folder, record)["verdict"] == "LOCK HOLDS"
+    (folder / "planted_link").unlink()
+    (folder / "figures.csv").unlink()
+    os.symlink("no/such/target.csv", folder / "figures.csv")
+    report = bl.verify_folder(folder, record)
+    assert report["verdict"] == "BROKEN"
+    assert report["removed"] == ["figures.csv"]
+    assert "links_added" not in report
+
+
 # -- REST + MCP surface -----------------------------------------------------
 
 def test_bundle_endpoints_require_enterprise_key():
