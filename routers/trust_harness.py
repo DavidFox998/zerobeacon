@@ -27,6 +27,8 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import uuid
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
@@ -68,9 +70,6 @@ disputes = _load("disputes", _ROOT / "disputes" / "disputes.py")
 disputes_mcp = _load("disputes_mcp", _ROOT / "disputes" / "disputes_mcp.py")
 bundle_lock = _load("bundle_lock", _ROOT / "bundles" / "bundle_lock.py")
 bundles_mcp = _load("bundles_mcp", _ROOT / "bundles" / "bundles_mcp.py")
-resolution = _load("resolution", _ROOT / "resolution" / "resolution.py")
-resolution_mcp = _load(
-    "resolution_mcp", _ROOT / "resolution" / "resolution_mcp.py")
 amazon_pay = _load(
     "amazon_pay", _ROOT / "rails" / "amazon_pay" / "amazon_pay.py")
 
@@ -189,77 +188,6 @@ def _bundles_call(name: str, arguments: dict) -> dict:
     return bundles_mcp.call_tool(name, arguments, store=_BUNDLE_STORE)
 
 
-RESOLUTION_CASES_FILE = "resolution-cases.json"
-
-
-def _resolution_cases_path() -> str:
-    return os.path.join(_data_dir(), RESOLUTION_CASES_FILE)
-
-
-def _resolution_cases() -> dict:
-    try:
-        with open(_resolution_cases_path(), "r", encoding="utf-8") as handle:
-            data = json.load(handle)
-        return data if isinstance(data, dict) else {}
-    except (OSError, json.JSONDecodeError):
-        return {}
-
-
-class _CaseStore:
-    """Persist Resolution Layer decision records under their
-    case_ids, beside the receipts chain — the audit trail a case is
-    retrieved from."""
-
-    def save(self, case_id: str, entry: dict) -> None:
-        path = _resolution_cases_path()
-        with _LOCK:
-            cases = _resolution_cases()
-            cases[case_id] = entry
-            os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(cases, handle)
-            os.chmod(path, 0o600)
-
-    def load(self, case_id: str) -> dict | None:
-        entry = _resolution_cases().get(case_id)
-        return entry if isinstance(entry, dict) else None
-
-
-_CASE_STORE = _CaseStore()
-
-
-def _resolution_decide(request_body: dict) -> tuple[dict, dict]:
-    """Evaluate, write the decision to the Receipts chain, and store
-    the case. Returns (decision record, recorded) — every verdict,
-    APPROVED or DECLINED, is receipted (contract rule 9)."""
-    record = resolution.evaluate(request_body)
-    primary = record["reason"] or {}
-    recorded = record_receipt(
-        "trust-resolution",
-        {"method": "POST", "path": "/api/trust/resolution/evaluate",
-         "checkpoint_id": record["checkpoint_id"],
-         "case_id": record["case_id"]},
-        {"decision": record["decision"],
-         "case_id": record["case_id"],
-         "reason_code": primary.get("reason_code")},
-    )
-    _CASE_STORE.save(record["case_id"], {
-        "record": record, "receipt": recorded["receipt"]})
-    return record, recorded
-
-
-def _resolution_evaluator(arguments: dict) -> dict:
-    record, recorded = _resolution_decide(arguments)
-    return {"decision": record, "receipt": recorded["receipt"],
-            "receipt_verifies": recorded["bundle_ok"]}
-
-
-def _resolution_call(name: str, arguments: dict) -> dict:
-    return resolution_mcp.call_tool(
-        name, arguments, evaluator=_resolution_evaluator)
-
-
 def _resolve_bundle_record(body: dict) -> tuple[dict | None, str | None]:
     """A verify's lock record: an explicit record object wins; else the
     record stored under the label. (None, error) when neither resolves."""
@@ -292,7 +220,6 @@ _DISPATCH = {
     "dispute_route": _disputes_call,
     "bundle_lock": _bundles_call,
     "bundle_verify": _bundles_call,
-    "resolution_evaluate": _resolution_call,
 }
 
 HARNESS_TOOL_NAMES = tuple(_DISPATCH)
@@ -654,12 +581,11 @@ _PAGE = """<!DOCTYPE html>
       <tr><td>Receipts, record</td><td><code>POST /api/trust/receipts/append</code><br><code>POST /api/trust/receipts/verify</code></td><td><code>append_receipt</code><br><code>verify_receipts</code></td></tr>
       <tr><td>Disputes, routing</td><td><code>POST /api/trust/disputes/route</code></td><td><code>dispute_route</code></td></tr>
       <tr><td>Bundle Lock, folder seal</td><td><code>POST /api/trust/bundles/lock</code><br><code>POST /api/trust/bundles/verify</code></td><td><code>bundle_lock</code><br><code>bundle_verify</code></td></tr>
-      <tr><td>Resolution Layer, decisions with reasons</td><td><code>POST /api/trust/resolution/evaluate</code><br><code>GET /api/trust/resolution/checkpoints/{checkpoint_id}</code><br><code>GET /api/trust/resolution/cases/{case_id}</code></td><td><code>resolution_evaluate</code></td></tr>
       <tr><td>PayPal packet gate</td><td><code>POST /api/trust/paypal/propose-packet</code></td><td>—</td></tr>
       <tr><td>Amazon Pay rail (staged, fixture)</td><td><code>POST /api/trust/amazonpay/propose</code><br><code>POST /api/trust/amazonpay/capture</code></td><td>—</td></tr>
     </tbody>
   </table>
-  <p>MCP transport for the fifteen tools above is <code>POST /api/trust/mcp</code>
+  <p>MCP transport for the fourteen tools above is <code>POST /api/trust/mcp</code>
   (JSON-RPC, protocol 2025-11-25). The catalogue <code>POST /mcp</code> list
   is unchanged.</p>
 
@@ -925,76 +851,30 @@ async def bundle_verify_endpoint(request: Request):
         return JSONResponse(
             {"ok": False, "error": problem}, status_code=400)
     report = bundle_lock.verify_folder(folder, record)
+    action = {"method": "POST", "path": "/api/trust/bundles/verify",
+              "label": report.get("label"),
+              "certificate": report.get("certificate"),
+              "verdict": report["verdict"],
+              "changed": report.get("changed", []),
+              "added": report.get("added", []),
+              "removed": report.get("removed", [])}
+    if "dirs_added" in report:  # bundle-lock/2 names these too
+        action.update({
+            "dirs_added": report["dirs_added"],
+            "dirs_removed": report["dirs_removed"],
+            "links_changed": report["links_changed"],
+            "links_added": report["links_added"],
+            "links_removed": report["links_removed"],
+        })
     recorded = record_receipt(
         "trust-bundles",
-        {"method": "POST", "path": "/api/trust/bundles/verify",
-         "label": report.get("label"),
-         "certificate": report.get("certificate"),
-         "verdict": report["verdict"],
-         "changed": report.get("changed", []),
-         "added": report.get("added", []),
-         "removed": report.get("removed", [])},
+        action,
         "bundle_lock_holds" if report["ok"] else "bundle_broken",
     )
     return {
         **report,
         "receipt": recorded["receipt"],
         "receipt_verifies": recorded["bundle_ok"],
-    }
-
-
-@router.post("/resolution/evaluate")
-async def resolution_evaluate_endpoint(request: Request):
-    """The Resolution Layer: assess a subject at a checkpoint and
-    return the decision record. A decline is a 200 answer with its
-    reasons, never an error; only a malformed request or an unknown
-    checkpoint is an error. Every decision is written to the
-    Receipts chain and stored under its case_id."""
-    body, err = _read_json(await request.body())
-    if err:
-        return err
-    try:
-        record, recorded = _resolution_decide(body)
-    except resolution.UnknownCheckpointError as exc:
-        return JSONResponse(
-            {"ok": False, "error": str(exc)}, status_code=404)
-    except resolution.ResolutionRequestError as exc:
-        return JSONResponse(
-            {"ok": False, "error": str(exc)}, status_code=400)
-    return {
-        "ok": True,
-        "decision": record,
-        "receipt": recorded["receipt"],
-        "receipt_verifies": recorded["bundle_ok"],
-    }
-
-
-@router.get("/resolution/checkpoints/{checkpoint_id}")
-async def resolution_checkpoint_endpoint(checkpoint_id: str):
-    """What this checkpoint decides: its published limits with
-    their operators, whether it requires validation, and the
-    precedence order its reasons come back in."""
-    try:
-        described = resolution.describe_checkpoint(checkpoint_id)
-    except resolution.UnknownCheckpointError as exc:
-        return JSONResponse(
-            {"ok": False, "error": str(exc)}, status_code=404)
-    return {"ok": True, "checkpoint": described}
-
-
-@router.get("/resolution/cases/{case_id}")
-async def resolution_case_endpoint(case_id: str):
-    """Retrieve a decision record by its case_id, exactly as
-    issued, with the Receipts entry that recorded it."""
-    entry = _CASE_STORE.load(case_id)
-    if entry is None:
-        return JSONResponse(
-            {"ok": False, "error": f"no case stored under {case_id!r}"},
-            status_code=404)
-    return {
-        "ok": True,
-        "decision": entry["record"],
-        "receipt": entry.get("receipt"),
     }
 
 
@@ -1034,7 +914,6 @@ async def trust_mcp(request: Request):
             + list(receipts_mcp.TOOLS)
             + list(disputes_mcp.TOOLS)
             + list(bundles_mcp.TOOLS)
-            + list(resolution_mcp.TOOLS)
         )
         return {"jsonrpc": "2.0", "id": mid, "result": {"tools": tools}}
     if method == "tools/call":
@@ -1340,71 +1219,44 @@ async def paypal_propose_packet(request: Request):
             {"ok": False, "error": problem}, status_code=400)
     report = bundle_lock.verify_folder(folder, record)
     if not report["ok"]:
+        action = {"method": "POST", "path": "/api/trust/paypal/propose-packet",
+                  "label": report.get("label"),
+                  "certificate": report.get("certificate"),
+                  "verdict": report["verdict"],
+                  "changed": report.get("changed", []),
+                  "added": report.get("added", []),
+                  "removed": report.get("removed", [])}
+        failed_check = {
+            "check": "bundle_lock",
+            "verdict": report["verdict"],
+            "record_ok": report.get("record_ok"),
+            "record_problem": report.get("record_problem"),
+            "changed": report.get("changed", []),
+            "added": report.get("added", []),
+            "removed": report.get("removed", []),
+        }
+        if "dirs_added" in report:  # bundle-lock/2 names these too
+            extra = {
+                "dirs_added": report["dirs_added"],
+                "dirs_removed": report["dirs_removed"],
+                "links_changed": report["links_changed"],
+                "links_added": report["links_added"],
+                "links_removed": report["links_removed"],
+            }
+            action.update(extra)
+            failed_check.update(extra)
         recorded = record_receipt(
             "trust-paypal",
-            {"method": "POST", "path": "/api/trust/paypal/propose-packet",
-             "label": report.get("label"),
-             "certificate": report.get("certificate"),
-             "verdict": report["verdict"],
-             "changed": report.get("changed", []),
-             "added": report.get("added", []),
-             "removed": report.get("removed", [])},
+            action,
             "refusal:bundle_lock",
         )
-        changed = report.get("changed", [])
-        added = report.get("added", [])
-        removed = report.get("removed", [])
-
-        def _named(names: list, word: str) -> str:
-            return f"{len(names)} {word}" + (
-                f" ({', '.join(names)})" if names else "")
-
-        decision_record, _decision_receipt = _resolution_decide({
-            "checkpoint_id": "paypal_packet_gate",
-            "subject": {
-                "kind": "payment_packet",
-                "ref": f"bundle:{report.get('label') or 'payment_packet'}",
-            },
-            "evidence": {
-                "property": "bundle_integrity",
-                "value": 0,
-                "unit": "match",
-                "check_id": "bundle-verify-v1",
-                "validation_id": None,
-            },
-            "limits": [{
-                "limit_name": "bundle_certificate_match",
-                "limit_type": "verification",
-                "operator": "eq",
-                "limit_value": 1,
-                "assessed_value": 0,
-                "unit": "match",
-                "check_id": "bundle-verify-v1",
-                "validation_id": None,
-                "steps_to_resolve": (
-                    "Resubmit a packet whose bundle verifies "
-                    "against its lock record: "
-                    f"{_named(changed, 'changed')}, "
-                    f"{_named(added, 'added')}, "
-                    f"{_named(removed, 'removed')}."),
-            }],
-        })
         return {
             "ok": False,
             "gate": "refused",
-            "refusal": {"failed_checks": [{
-                "check": "bundle_lock",
-                "verdict": report["verdict"],
-                "record_ok": report.get("record_ok"),
-                "record_problem": report.get("record_problem"),
-                "changed": report.get("changed", []),
-                "added": report.get("added", []),
-                "removed": report.get("removed", []),
-            }]},
+            "refusal": {"failed_checks": [failed_check]},
             "certificate": None,
             "paypal": None,
             "packet": report,
-            "resolution": decision_record,
             "receipt": recorded["receipt"],
             "receipt_verifies": recorded["bundle_ok"],
         }
@@ -1736,3 +1588,382 @@ async def amazonpay_capture(request: Request):
         "receipt_verifies": recorded["bundle_ok"],
         "recorded": True,
     }
+
+
+# -- Refusal layer ------------------------------------------------------
+# The contract of record is the Refusal Layer OpenAPI (v0.1): a gate
+# answers with a typed, numbered refusal — never an HTTP error. A
+# refusal is a 200 GateVerdict carrying refusal_code, bound_type,
+# bound_name, bound_value, observed_value, unit and
+# what_would_change_verdict; 400 is only for a malformed request and
+# 404 only for an unknown gate_id or trace_id. Every verdict, PASS or
+# REFUSED, is appended to the verdict log in the data dir and stays
+# retrievable by trace_id at GET /verdicts/{trace_id} — a refusal
+# you can't audit later is just a "no".
+#
+# The one gate implemented here is the PayPal packet gate
+# (paypal_packet_gate, gated_by paypal_packet_gate_v2): the subject
+# packet — a Bundle-Locked folder — is measured by the real
+# bundle-verify instrument and passes only if it recomputes exactly
+# to its lock record. Contract rule 4: no calibration, no
+# measurement — an envelope that cannot cite a current calibration
+# record for the instrument is refused CALIBRATION_MISSING (or
+# CALIBRATION_EXPIRED) before any measurement is trusted.
+
+gates_router = APIRouter(tags=["Refusal layer"])
+
+VERDICTS_FILE = "gate-verdicts.jsonl"
+_PACKET_GATE_ID = "paypal_packet_gate"
+_PACKET_GATE_BY = "paypal_packet_gate_v2"
+_PACKET_INSTRUMENT = "bundle-verify-v1"
+_PACKET_DEMO_DIR = _ROOT / "demo"
+
+# The bundle-verify instrument's calibration papers, by id. A record
+# here whose expires_at is in the future is what "current papers"
+# means; re-running the labeled packet suite (clean PASS, tampered
+# REFUSED) is what mints a new one.
+_CALIBRATION_REGISTRY = {
+    "cal_bundle_verify_2026-11-05": {
+        "instrument_id": _PACKET_INSTRUMENT,
+        "calibrated_at": "2026-11-05T00:00:00Z",
+        "expires_at": "2027-11-05T00:00:00Z",
+    },
+    "cal_bundle_verify_2024-11-05": {
+        "instrument_id": _PACKET_INSTRUMENT,
+        "calibrated_at": "2024-11-05T00:00:00Z",
+        "expires_at": "2025-11-05T00:00:00Z",
+    },
+}
+
+
+def _problem(title: str, detail: str, status_code: int) -> JSONResponse:
+    """A transport Problem. A gate's "no" is never one of these —
+    it is a 200 REFUSED verdict."""
+    return JSONResponse({"title": title, "detail": detail},
+                        status_code=status_code)
+
+
+def _read_problem_json(raw: bytes):
+    try:
+        body = json.loads(raw.decode("utf-8") if raw else "{}")
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None, _problem("Malformed evaluation request",
+                              "request body is not valid JSON", 400)
+    if not isinstance(body, dict):
+        return None, _problem("Malformed evaluation request",
+                              "request body must be a JSON object", 400)
+    return body, None
+
+
+def _verdicts_path() -> str:
+    return os.path.join(_data_dir(), VERDICTS_FILE)
+
+
+def _store_verdict(verdict: dict) -> None:
+    """Append one verdict to the lineage log, PASS and REFUSED alike."""
+    path = _verdicts_path()
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+    with _LOCK:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(verdict) + "\n")
+
+
+def _load_verdict(trace_id: str) -> dict | None:
+    try:
+        with open(_verdicts_path(), "r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    verdict = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(verdict, dict) \
+                        and verdict.get("trace_id") == trace_id:
+                    return verdict
+    except OSError:
+        return None
+    return None
+
+
+def _current_calibration(instrument_id: str):
+    """(calibration_id, record) with the latest expires_at for an
+    instrument, or None when the registry holds none for it."""
+    best = None
+    for calibration_id, record in _CALIBRATION_REGISTRY.items():
+        if record.get("instrument_id") != instrument_id:
+            continue
+        if best is None or record["expires_at"] > best[1]["expires_at"]:
+            best = (calibration_id, record)
+    return best
+
+
+def _calibration_refusal(measurement: dict | None) -> dict | None:
+    """None when the envelope shows current papers for the packet
+    gate's instrument; otherwise the calibration Refusal. No
+    calibration, no measurement (contract rule 4)."""
+    now = datetime.now(timezone.utc)
+    now_text = now.isoformat(timespec="seconds").replace("+00:00", "Z")
+    current = _current_calibration(_PACKET_INSTRUMENT)
+    current_text = (
+        f"the current record is {current[0]} (expires_at "
+        f"{current[1]['expires_at']})" if current is not None
+        else "no record is registered")
+    calibration_id = measurement.get("calibration_id") \
+        if isinstance(measurement, dict) else None
+    if not isinstance(calibration_id, str) or not calibration_id.strip():
+        return {
+            "refusal_code": "CALIBRATION_MISSING",
+            "bound_type": "calibration",
+            "bound_name": "bundle_verify_calibration",
+            "bound_value": 1,
+            "observed_value": 0,
+            "unit": "calibration_record",
+            "what_would_change_verdict": (
+                "Present a measurement envelope whose bundle_integrity "
+                f"measurement cites a current calibration_id for "
+                f"instrument {_PACKET_INSTRUMENT} ({current_text}). "
+                "The gate does not proceed on an unmeasured number."),
+        }
+    record = _CALIBRATION_REGISTRY.get(calibration_id)
+    if record is None or record.get("instrument_id") != _PACKET_INSTRUMENT:
+        return {
+            "refusal_code": "CALIBRATION_MISSING",
+            "bound_type": "calibration",
+            "bound_name": "bundle_verify_calibration",
+            "bound_value": 1,
+            "observed_value": 0,
+            "unit": "calibration_record",
+            "what_would_change_verdict": (
+                f"The envelope cites calibration_id {calibration_id}, "
+                f"which names no calibration record for instrument "
+                f"{_PACKET_INSTRUMENT} ({current_text}). The gate "
+                "does not proceed on an unmeasured number."),
+        }
+    expires = datetime.fromisoformat(
+        record["expires_at"].replace("Z", "+00:00"))
+    if expires <= now:
+        return {
+            "refusal_code": "CALIBRATION_EXPIRED",
+            "bound_type": "calibration",
+            "bound_name": "bundle_verify_calibration",
+            "bound_value": now_text,
+            "observed_value": record["expires_at"],
+            "unit": "calibration_expires_at",
+            "what_would_change_verdict": (
+                f"A current calibration record for instrument "
+                f"{_PACKET_INSTRUMENT} (re-run the labeled packet "
+                f"suite: clean PASS, tampered REFUSED) with expires_at "
+                f"after {now_text}; record {calibration_id} expired "
+                f"at {record['expires_at']}."),
+        }
+    return None
+
+
+def _resolve_packet(ref: str, context: dict):
+    """Resolve a subject ref to (folder, lock record, problem).
+
+    The ref names a packet: "bundle:<name>", where <name> is a folder
+    path as given, or a packet folder under the shipped demo dir.
+    The lock record comes from context.record, from the record the
+    harness stored under context.record_label, or from the packet's
+    own "<folder>.lock.json" — a "<stem>_tampered" packet carries no
+    record of its own and is verified against the "<stem>_clean"
+    packet's record beside it."""
+    folder = context.get("folder") \
+        if isinstance(context.get("folder"), str) else None
+    record = context.get("record") \
+        if isinstance(context.get("record"), dict) else None
+    if record is None and isinstance(context.get("record_label"), str):
+        record = _BUNDLE_STORE.load(context["record_label"])
+    name = ref[len("bundle:"):] if ref.startswith("bundle:") else ref
+    if folder is None:
+        candidate = Path(name)
+        if candidate.is_dir():
+            folder = str(candidate)
+        elif (_PACKET_DEMO_DIR / name).is_dir():
+            folder = str(_PACKET_DEMO_DIR / name)
+    if record is None and folder is not None:
+        lockfile = Path(folder + ".lock.json")
+        if not lockfile.is_file():
+            base = Path(folder).name
+            if base.endswith("_tampered"):
+                lockfile = Path(folder).parent / (
+                    base[: -len("_tampered")] + "_clean.lock.json")
+        if lockfile.is_file():
+            try:
+                with open(lockfile, "r", encoding="utf-8") as handle:
+                    record = json.load(handle)
+            except (OSError, json.JSONDecodeError):
+                record = None
+    if folder is None or not isinstance(record, dict):
+        return None, None, (
+            f"subject ref {ref!r} does not resolve to a packet folder "
+            "with a lock record")
+    return folder, record, None
+
+
+def _packet_gate_verdict(measurements: list, folder: str,
+                         record: dict) -> dict:
+    """Measure the packet and issue the verdict. Calibration is
+    checked first: without current papers the measurement is not
+    trusted, so no integrity verdict is issued on it."""
+    base = {
+        "gated_by": _PACKET_GATE_BY,
+        "trace_id": "trace_" + uuid.uuid4().hex[:20],
+        "evaluated_at": datetime.now(timezone.utc).isoformat(
+            timespec="seconds").replace("+00:00", "Z"),
+    }
+    measurement = next(
+        (m for m in measurements
+         if m.get("instrument_id") == _PACKET_INSTRUMENT), None)
+    refusal = _calibration_refusal(measurement)
+    if refusal is not None:
+        return {**base, "decision": "REFUSED", "measurement_id": None,
+                "refusal": refusal, "refusals": [refusal]}
+    report = bundle_lock.verify_folder(folder, record)
+    if report["ok"]:
+        return {**base, "decision": "PASS",
+                "measurement_id": measurement.get("measurement_id")}
+    changed = report.get("changed", [])
+    added = report.get("added", [])
+    removed = report.get("removed", [])
+    certificate = str(record.get("certificate") or "")
+    measured = (f"{len(changed)} changed, {len(added)} added, "
+                f"{len(removed)} removed files")
+    named = []
+    if changed:
+        named.append("changed: " + ", ".join(changed))
+    if added:
+        named.append("added: " + ", ".join(added))
+    if removed:
+        named.append("removed: " + ", ".join(removed))
+    if "dirs_added" in report:
+        measured += (
+            f"; directories {len(report['dirs_added'])} added, "
+            f"{len(report['dirs_removed'])} removed; symlinks "
+            f"{len(report['links_changed'])} changed, "
+            f"{len(report['links_added'])} added, "
+            f"{len(report['links_removed'])} removed")
+        for key, word in (("dirs_added", "directories added"),
+                          ("dirs_removed", "directories removed"),
+                          ("links_changed", "symlinks changed"),
+                          ("links_added", "symlinks added"),
+                          ("links_removed", "symlinks removed")):
+            if report[key]:
+                named.append(f"{word}: " + ", ".join(report[key]))
+    what = (
+        "Resubmit a packet whose bundle verifies against its lock "
+        f"record: 0 changed, 0 added, 0 removed files (certificate "
+        f"{certificate[:8]}... must recompute exactly). This packet "
+        f"measured {measured}")
+    if named:
+        what += " — " + "; ".join(named)
+    if not report.get("record_ok"):
+        what += ("; the lock record itself does not recompute: "
+                 f"{report.get('record_problem')}")
+    refusal = {
+        "refusal_code": "INTEGRITY_MISMATCH",
+        "bound_type": "integrity",
+        "bound_name": "bundle_certificate_match",
+        "bound_value": 1,
+        "observed_value": 0,
+        "unit": "match",
+        "what_would_change_verdict": what + ".",
+    }
+    return {**base, "decision": "REFUSED",
+            "measurement_id": measurement.get("measurement_id"),
+            "refusal": refusal, "refusals": [refusal]}
+
+
+def _gate_description(gate_id: str) -> dict | None:
+    if gate_id != _PACKET_GATE_ID:
+        return None
+    bounds = [{
+        "bound_name": "bundle_certificate_match",
+        "bound_type": "integrity",
+        "bound_value": 1,
+        "instrument_id": _PACKET_INSTRUMENT,
+    }]
+    current = _current_calibration(_PACKET_INSTRUMENT)
+    if current is not None:
+        bounds.append({
+            "bound_name": "bundle_verify_calibration",
+            "bound_type": "calibration",
+            "bound_value": current[1]["expires_at"],
+            "instrument_id": _PACKET_INSTRUMENT,
+        })
+    return {
+        "gate_id": gate_id,
+        "description": (
+            "The PayPal packet gate: a payment packet (a Bundle-Locked "
+            "folder) may proceed only if the bundle recomputes exactly "
+            "to its lock record — 0 changed, 0 added, 0 removed — "
+            "measured by the bundle-verify instrument showing current "
+            "calibration papers."),
+        "bounds": bounds,
+    }
+
+
+@gates_router.post("/gates/{gate_id}/evaluate")
+async def evaluate_gate(gate_id: str, request: Request):
+    """Evaluate a claim against a gate's named bounds. The answer is
+    a 200 GateVerdict — PASS, or REFUSED with the primary refusal in
+    `refusal` and every failed bound in `refusals`."""
+    if gate_id != _PACKET_GATE_ID:
+        return _problem("Unknown gate", f"no gate named {gate_id!r}", 404)
+    body, err = _read_problem_json(await request.body())
+    if err:
+        return err
+    subject = body.get("subject")
+    if not isinstance(subject, dict) \
+            or not isinstance(subject.get("kind"), str) \
+            or not isinstance(subject.get("ref"), str):
+        return _problem(
+            "Malformed evaluation request",
+            "subject.kind and subject.ref are required strings", 400)
+    measurements = body.get("measurements")
+    if measurements is None:
+        measurements = []
+    if not isinstance(measurements, list) or any(
+            not isinstance(m, dict)
+            or not isinstance(m.get("measurement_id"), str)
+            or not isinstance(m.get("property"), str)
+            or "value" not in m
+            or not isinstance(m.get("instrument_id"), str)
+            for m in measurements):
+        return _problem(
+            "Malformed evaluation request",
+            "each measurement needs measurement_id, property, value "
+            "and instrument_id", 400)
+    context = body.get("context")
+    folder, record, problem = _resolve_packet(
+        subject["ref"], context if isinstance(context, dict) else {})
+    if problem is not None:
+        return _problem("Malformed evaluation request", problem, 400)
+    verdict = _packet_gate_verdict(measurements, folder, record)
+    _store_verdict(verdict)
+    return verdict
+
+
+@gates_router.get("/gates/{gate_id}")
+async def describe_gate(gate_id: str):
+    """What this gate enforces — its bounds, by name and number."""
+    description = _gate_description(gate_id)
+    if description is None:
+        return _problem("Unknown gate", f"no gate named {gate_id!r}", 404)
+    return description
+
+
+@gates_router.get("/verdicts/{trace_id}")
+async def get_verdict(trace_id: str):
+    """Retrieve a past verdict from the lineage log, exactly as
+    issued — PASS and REFUSED verdicts are both stored."""
+    verdict = _load_verdict(trace_id)
+    if verdict is None:
+        return _problem(
+            "Unknown trace_id",
+            f"no verdict stored under trace_id {trace_id!r}", 404)
+    return verdict
