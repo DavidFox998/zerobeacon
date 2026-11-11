@@ -1,0 +1,936 @@
+openapi: 3.1.0
+info:
+  title: ZeroBeacon Resolution Layer
+  version: 0.2.0
+  summary: Decisions with reasons — every decline opens a case with steps to resolve.
+  description: |
+    Contract v0.2 — the Resolution Layer of the ZeroBeacon trust
+    harness. Supersedes the v0.1 draft shape in full: field names,
+    reason codes, and examples are in the payments dialect.
+
+    Doctrine: verified evidence -> a decision with reasons -> a case
+    you can resolve -> trust. A decision rests on evidence; evidence
+    rests on current validation; a decline carries its limit, its
+    assessed value, and its steps to resolve — or it is not an
+    answer. No current validation, no decision.
+
+    Contract rules enforced by this API:
+    1. A decline is a first-class return type, never an HTTP error.
+       POST /api/trust/resolution/evaluate returns 200 with
+       decision: DECLINED and the full decision record. Only
+       transport faults (malformed request, unknown checkpoint)
+       are errors.
+    2. reason MUST equal reasons[0]. Precedence is published in
+       each checkpoint's description and is deterministic:
+       validation reasons > VERIFICATION_MISMATCH >
+       POLICY_LIMIT_EXCEEDED > RESTRICTED_CATEGORY > LIMIT_NOT_MET >
+       DOCUMENT_NOT_ACCEPTED.
+    3. Validation reasons (VALIDATION_MISSING / VALIDATION_EXPIRED)
+       short-circuit: a decision never mixes a validation reason
+       with subject reasons, because no limit was honestly
+       evaluated.
+    4. unit is REQUIRED whenever limit_value / assessed_value are
+       numeric.
+    5. operator is REQUIRED on every reason and on every published
+       limit in a checkpoint description, and steps_to_resolve must
+       be consistent with the operator.
+    6. An APPROVED decision can never rest on a null validation_id
+       where the checkpoint declares requires_validation: true.
+    7. Validation reasons carry typed instants, not the numeric
+       pair: required_valid_at (the evaluation instant) and
+       validation_expires_at (the record's expiry). Numeric
+       limit/assessed fields are numeric-only.
+    8. Validation reasons MUST name check_id, and validation_id
+       where a record exists.
+    9. Every decision, APPROVED or DECLINED, is written to the
+       Receipts chain and retrievable by case_id.
+
+    Legislation beat (pattern-level; no certification claimed):
+    Regulation B requires specific reasons for adverse action;
+    CFPB Circulars 2022-03 and 2023-03 hold that the duty stands
+    even for complex models and that generic reasons do not comply
+    — which is why generic steps_to_resolve text is a contract
+    violation here. GDPR Article 22 and EU AI Act Articles 12, 13
+    and 14 map onto the case record and the audit trail in the
+    same pattern. The contrast case is the card-network decline
+    code (05, "Do Not Honor"): a number that explains nothing and
+    resolves nothing.
+
+    Reserved, not emitted in v1: DETAIL_WITHHELD_BY_LAW, for cases
+    where a duty (anti-money-laundering reporting, for example)
+    forbids explaining a detail.
+  contact:
+    name: ZeroBeacon (Entangled Technologies)
+    url: https://zerobeacon.ai
+servers:
+  - url: https://api.zerobeacon.ai
+    description: Production
+security:
+  - apiKey: []
+paths:
+  /api/trust/resolution/evaluate:
+    post:
+      operationId: evaluateResolution
+      summary: Evaluate a subject at a checkpoint; return the decision record.
+      description: |
+        The subject is assessed against the checkpoint's declared
+        limits on the embedded evidence, and answered APPROVED or
+        DECLINED — both are answers, both are cases, both are
+        written to the Receipts chain.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluationRequest'
+            examples:
+              packetIntegrity:
+                summary: Packet checkpoint — sealed packet assessed
+                value:
+                  checkpoint_id: paypal_packet_gate
+                  subject:
+                    kind: payment_packet
+                    ref: bundle:payment_packet_tampered
+                  evidence:
+                    property: bundle_integrity
+                    value: 0
+                    unit: match
+                    check_id: bundle-verify-v1
+                    validation_id: null
+              transactionLimit:
+                summary: Transaction review — amount against the tier limit
+                value:
+                  checkpoint_id: paypal_transaction_review
+                  subject:
+                    kind: transaction
+                    ref: txn:8f3ka21
+                  evidence:
+                    property: transaction_amount
+                    value: 2450
+                    unit: USD
+                    check_id: tier-limit-check-v1
+                    validation_id: val_tier_limits_2026-11-01
+                    validation_expires_at: '2027-02-01T00:00:00Z'
+                  limits:
+                    - limit_name: transaction_amount_limit
+                      limit_type: eligibility_limit
+                      operator: lte
+                      limit_value: 2000
+                      assessed_value: 2450
+                      unit: USD
+                      check_id: tier-limit-check-v1
+                      validation_id: val_tier_limits_2026-11-01
+                      steps_to_resolve: >-
+                        Split the payment so each part is lte 2000
+                        USD, or complete the verification that raises
+                        this account's tier limit.
+      responses:
+        '200':
+          description: A decision. APPROVED or DECLINED — both are answers.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationResponse'
+              examples:
+                declinedVerification:
+                  summary: Declined — verification (packet no longer matches its sealed record)
+                  value:
+                    ok: true
+                    decision:
+                      format: resolution-decision/1
+                      decision: DECLINED
+                      checkpoint_id: paypal_packet_gate
+                      gate_version: 2.0.0
+                      decided_by: paypal_packet_gate
+                      case_id: case_9f2c1ab47d0e4c55a1b3e8d27f04c6aa
+                      evaluated_at: '2026-11-10T21:05:00Z'
+                      subject:
+                        kind: payment_packet
+                        ref: bundle:payment_packet_tampered
+                      evidence:
+                        evidence_id: ev_51bd09c2a7e44f10
+                        property: bundle_integrity
+                        value: 0
+                        unit: match
+                        check_id: bundle-verify-v1
+                        validation_id: null
+                      reason:
+                        reason_code: VERIFICATION_MISMATCH
+                        limit_type: verification
+                        limit_name: bundle_certificate_match
+                        operator: eq
+                        limit_value: 1
+                        assessed_value: 0
+                        unit: match
+                        steps_to_resolve: >-
+                          Resubmit a packet whose bundle verifies
+                          against its lock record: 1 changed
+                          (invoice.txt), 0 added, 0 removed. The
+                          demo bundle this example is drawn from
+                          carries certificate
+                          9c248888a06a65aa904c0762ffdf5a2a9227fd90e8bafd967c3f1c5b75266962
+                          and beacon stamp e2040800; both recompute
+                          from the bundle's own files.
+                        check_id: bundle-verify-v1
+                        validation_id: null
+                      reasons:
+                        - reason_code: VERIFICATION_MISMATCH
+                          limit_type: verification
+                          limit_name: bundle_certificate_match
+                          operator: eq
+                          limit_value: 1
+                          assessed_value: 0
+                          unit: match
+                          steps_to_resolve: >-
+                            Resubmit a packet whose bundle verifies
+                            against its lock record: 1 changed
+                            (invoice.txt), 0 added, 0 removed.
+                          check_id: bundle-verify-v1
+                          validation_id: null
+                    receipt:
+                      receipt_id: 7c1d5e2a90b34f0e8a6d2c41f5b39e07
+                      hash: 2f8a1c94...c
+                    receipt_verifies: true
+                declinedEligibilityLimit:
+                  summary: Declined — eligibility limit (transaction over the tier limit)
+                  value:
+                    ok: true
+                    decision:
+                      format: resolution-decision/1
+                      decision: DECLINED
+                      checkpoint_id: paypal_transaction_review
+                      gate_version: 1.0.0
+                      decided_by: paypal_transaction_review
+                      case_id: case_41aa07c3d9b24e0f9c55a1b3e8d27f04c
+                      evaluated_at: '2026-11-10T21:06:00Z'
+                      subject:
+                        kind: transaction
+                        ref: txn:8f3ka21
+                      evidence:
+                        evidence_id: ev_8d02b6f1c3a54b90
+                        property: transaction_amount
+                        value: 2450
+                        unit: USD
+                        check_id: tier-limit-check-v1
+                        validation_id: val_tier_limits_2026-11-01
+                      reason:
+                        reason_code: LIMIT_NOT_MET
+                        limit_type: eligibility_limit
+                        limit_name: transaction_amount_limit
+                        operator: lte
+                        limit_value: 2000
+                        assessed_value: 2450
+                        unit: USD
+                        steps_to_resolve: >-
+                          Split the payment so each part is lte 2000
+                          USD, or complete the verification that
+                          raises this account's tier limit.
+                        check_id: tier-limit-check-v1
+                        validation_id: val_tier_limits_2026-11-01
+                      reasons:
+                        - reason_code: LIMIT_NOT_MET
+                          limit_type: eligibility_limit
+                          limit_name: transaction_amount_limit
+                          operator: lte
+                          limit_value: 2000
+                          assessed_value: 2450
+                          unit: USD
+                          steps_to_resolve: >-
+                            Split the payment so each part is lte
+                            2000 USD, or complete the verification
+                            that raises this account's tier limit.
+                          check_id: tier-limit-check-v1
+                          validation_id: val_tier_limits_2026-11-01
+                    receipt:
+                      receipt_id: 1b7f0a2c94d34e58b6a1c3d5e7f09b28
+                      hash: 9d3f4762...c5
+                    receipt_verifies: true
+                declinedPolicyLimit:
+                  summary: Declined — hard policy limit (no single case can argue with it)
+                  value:
+                    ok: true
+                    decision:
+                      format: resolution-decision/1
+                      decision: DECLINED
+                      checkpoint_id: paypal_transaction_review
+                      gate_version: 1.0.0
+                      decided_by: paypal_transaction_review
+                      case_id: case_b80e14d6a2c94f7fb3c5e91b0d47f6a2
+                      evaluated_at: '2026-11-10T21:07:00Z'
+                      subject:
+                        kind: transaction
+                        ref: txn:8f3ka99
+                      evidence:
+                        evidence_id: ev_3c5e91b0d47f6a2c
+                        property: transaction_amount
+                        value: 12500
+                        unit: USD
+                        check_id: rail-limit-check-v1
+                        validation_id: val_rail_limits_2026-10-15
+                      reason:
+                        reason_code: POLICY_LIMIT_EXCEEDED
+                        limit_type: hard_policy_limit
+                        limit_name: rail_single_transaction_cap
+                        operator: lte
+                        limit_value: 10000
+                        assessed_value: 12500
+                        unit: USD
+                        steps_to_resolve: >-
+                          This rail's hard policy cap is 10000 USD
+                          per transaction and no case-level step
+                          moves it: split the payment across
+                          transactions, or request a policy review
+                          under case reference for a different rail.
+                        check_id: rail-limit-check-v1
+                        validation_id: val_rail_limits_2026-10-15
+                      reasons:
+                        - reason_code: POLICY_LIMIT_EXCEEDED
+                          limit_type: hard_policy_limit
+                          limit_name: rail_single_transaction_cap
+                          operator: lte
+                          limit_value: 10000
+                          assessed_value: 12500
+                          unit: USD
+                          steps_to_resolve: >-
+                            Split the payment across transactions,
+                            or request a policy review for a
+                            different rail.
+                          check_id: rail-limit-check-v1
+                          validation_id: val_rail_limits_2026-10-15
+                    receipt:
+                      receipt_id: 5e8a1b02f8a1c94d0b64e57a3c5e91b0
+                      hash: 4762c5e8...b1
+                    receipt_verifies: true
+                declinedRestrictedCategory:
+                  summary: Declined — restricted category for this rail
+                  value:
+                    ok: true
+                    decision:
+                      format: resolution-decision/1
+                      decision: DECLINED
+                      checkpoint_id: paypal_transaction_review
+                      gate_version: 1.0.0
+                      decided_by: paypal_transaction_review
+                      case_id: case_07d1b3e8d27f04c6aa9f2c1ab47d0e4c
+                      evaluated_at: '2026-11-10T21:08:00Z'
+                      subject:
+                        kind: transaction
+                        ref: txn:8f3kb17
+                      evidence:
+                        evidence_id: ev_1ab47d0e4c55a1b3
+                        property: goods_category_status
+                        value: restricted
+                        unit: null
+                        check_id: goods-category-check-v2
+                        validation_id: val_goods_categories_2026-11-01
+                      reason:
+                        reason_code: RESTRICTED_CATEGORY
+                        limit_type: restricted_category
+                        limit_name: goods_category_permitted
+                        operator: eq
+                        limit_value: permitted
+                        assessed_value: restricted
+                        steps_to_resolve: >-
+                          Use a rail that permits this goods
+                          category, or provide the licence document
+                          that reclassifies the item for this rail.
+                        check_id: goods-category-check-v2
+                        validation_id: val_goods_categories_2026-11-01
+                      reasons:
+                        - reason_code: RESTRICTED_CATEGORY
+                          limit_type: restricted_category
+                          limit_name: goods_category_permitted
+                          operator: eq
+                          limit_value: permitted
+                          assessed_value: restricted
+                          steps_to_resolve: >-
+                            Use a rail that permits this goods
+                            category, or provide the licence
+                            document that reclassifies the item.
+                          check_id: goods-category-check-v2
+                          validation_id: val_goods_categories_2026-11-01
+                    receipt:
+                      receipt_id: 2c41f5b39e077c1d5e2a90b34f0e8a6d
+                      hash: b64e57a3...c5
+                    receipt_verifies: true
+                declinedDocument:
+                  summary: Declined — document not accepted
+                  value:
+                    ok: true
+                    decision:
+                      format: resolution-decision/1
+                      decision: DECLINED
+                      checkpoint_id: paypal_document_review
+                      gate_version: 1.0.0
+                      decided_by: paypal_document_review
+                      case_id: case_5b39e077c1d5e2a90b34f0e8a6d2c41f
+                      evaluated_at: '2026-11-10T21:09:00Z'
+                      subject:
+                        kind: document
+                        ref: doc:passport-scan-4417
+                      evidence:
+                        evidence_id: ev_0e4c55a1b3e8d27f
+                        property: document_acceptance
+                        value: unreadable_image
+                        unit: null
+                        check_id: document-intake-v3
+                        validation_id: val_document_intake_2026-09-30
+                      reason:
+                        reason_code: DOCUMENT_NOT_ACCEPTED
+                        limit_type: document
+                        limit_name: document_type_accepted
+                        operator: eq
+                        limit_value: accepted
+                        assessed_value: unreadable_image
+                        steps_to_resolve: >-
+                          Provide the document again as a readable
+                          scan or photo (accepted types: passport,
+                          national ID card, driving licence), flat,
+                          fully in frame, no glare.
+                        check_id: document-intake-v3
+                        validation_id: val_document_intake_2026-09-30
+                      reasons:
+                        - reason_code: DOCUMENT_NOT_ACCEPTED
+                          limit_type: document
+                          limit_name: document_type_accepted
+                          operator: eq
+                          limit_value: accepted
+                          assessed_value: unreadable_image
+                          steps_to_resolve: >-
+                            Provide the document again as a readable
+                            scan or photo (accepted types: passport,
+                            national ID card, driving licence).
+                          check_id: document-intake-v3
+                          validation_id: val_document_intake_2026-09-30
+                    receipt:
+                      receipt_id: 90b34f0e8a6d2c41f5b39e077c1d5e2a
+                      hash: 1b0d47f6...a2c8
+                    receipt_verifies: true
+                declinedValidationExpired:
+                  summary: Declined — validation expired (typed instants, short-circuit)
+                  value:
+                    ok: true
+                    decision:
+                      format: resolution-decision/1
+                      decision: DECLINED
+                      checkpoint_id: paypal_transaction_review
+                      gate_version: 1.0.0
+                      decided_by: paypal_transaction_review
+                      case_id: case_d27f04c6aa9f2c1ab47d0e4c55a1b3e8
+                      evaluated_at: '2026-11-10T21:10:00Z'
+                      subject:
+                        kind: transaction
+                        ref: txn:8f3kb42
+                      evidence:
+                        evidence_id: ev_7d0e4c55a1b3e8d2
+                        property: transaction_amount
+                        value: 900
+                        unit: USD
+                        check_id: tier-limit-check-v1
+                        validation_id: val_tier_limits_2026-08-01
+                      reason:
+                        reason_code: VALIDATION_EXPIRED
+                        limit_type: validation
+                        limit_name: current_validation
+                        operator: gt
+                        steps_to_resolve: >-
+                          Revalidate check tier-limit-check-v1:
+                          validation val_tier_limits_2026-08-01
+                          expired at 2026-11-01T00:00:00Z; a current
+                          record must show validation_expires_at gt
+                          the evaluation instant. No decision is
+                          made on an expired validation.
+                        check_id: tier-limit-check-v1
+                        validation_id: val_tier_limits_2026-08-01
+                        required_valid_at: '2026-11-10T21:10:00Z'
+                        validation_expires_at: '2026-11-01T00:00:00Z'
+                      reasons:
+                        - reason_code: VALIDATION_EXPIRED
+                          limit_type: validation
+                          limit_name: current_validation
+                          operator: gt
+                          steps_to_resolve: >-
+                            Revalidate check tier-limit-check-v1;
+                            no decision is made on an expired
+                            validation.
+                          check_id: tier-limit-check-v1
+                          validation_id: val_tier_limits_2026-08-01
+                          required_valid_at: '2026-11-10T21:10:00Z'
+                          validation_expires_at: '2026-11-01T00:00:00Z'
+                    receipt:
+                      receipt_id: 6d2c41f5b39e077c1d5e2a90b34f0e8a
+                      hash: 3c5e91b0...d47f6a2c8e5b
+                    receipt_verifies: true
+                approved:
+                  summary: Approved — within the limit, validation current
+                  value:
+                    ok: true
+                    decision:
+                      format: resolution-decision/1
+                      decision: APPROVED
+                      checkpoint_id: paypal_transaction_review
+                      gate_version: 1.0.0
+                      decided_by: paypal_transaction_review
+                      case_id: case_1ab47d0e4c55a1b3e8d27f04c6aa9f2c
+                      evaluated_at: '2026-11-10T21:11:00Z'
+                      subject:
+                        kind: transaction
+                        ref: txn:8f3kb55
+                      evidence:
+                        evidence_id: ev_55a1b3e8d27f04c6
+                        property: transaction_amount
+                        value: 1450
+                        unit: USD
+                        check_id: tier-limit-check-v1
+                        validation_id: val_tier_limits_2026-11-01
+                      reason: null
+                      reasons: []
+                    receipt:
+                      receipt_id: 8d27f04c6aa9f2c1ab47d0e4c55a1b3
+                      hash: 4762c5e8...a1b0
+                    receipt_verifies: true
+        '400':
+          description: Malformed evaluation request (not a decision).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Unknown checkpoint_id (not a decision).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/trust/resolution/checkpoints/{checkpoint_id}:
+    get:
+      operationId: describeResolutionCheckpoint
+      summary: What this checkpoint decides — its limits, by name, operator and number.
+      parameters:
+        - name: checkpoint_id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: paypal_packet_gate
+      responses:
+        '200':
+          description: The checkpoint's published description.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckpointDescription'
+              examples:
+                packetGate:
+                  summary: The packet checkpoint
+                  value:
+                    ok: true
+                    checkpoint:
+                      checkpoint_id: paypal_packet_gate
+                      description: >-
+                        A payment's evidence packet is verified
+                        against its Bundle Lock record before the
+                        payment is proposed. The check is a
+                        recompute, so it is self-validating and
+                        this checkpoint declares
+                        requires_validation false.
+                      gate_version: 2.0.0
+                      decided_by: paypal_packet_gate
+                      requires_validation: false
+                      limits:
+                        - limit_name: bundle_certificate_match
+                          limit_type: verification
+                          operator: eq
+                          limit_value: 1
+                          unit: match
+                          check_id: bundle-verify-v1
+                      precedence:
+                        - VALIDATION_MISSING
+                        - VALIDATION_EXPIRED
+                        - VERIFICATION_MISMATCH
+                        - POLICY_LIMIT_EXCEEDED
+                        - RESTRICTED_CATEGORY
+                        - LIMIT_NOT_MET
+                        - DOCUMENT_NOT_ACCEPTED
+        '404':
+          description: Unknown checkpoint_id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/trust/resolution/cases/{case_id}:
+    get:
+      operationId: getResolutionCase
+      summary: Retrieve a past decision from the audit trail.
+      description: |
+        APPROVED and DECLINED decisions are both stored and
+        retrievable, with the Receipts entry that recorded them.
+        This is the audit hook: every decision + every reason,
+        disagreements included.
+      parameters:
+        - name: case_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The recorded decision, exactly as issued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaseResponse'
+        '404':
+          description: No decision under this case_id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  schemas:
+    EvaluationRequest:
+      type: object
+      required:
+        - checkpoint_id
+        - subject
+      properties:
+        checkpoint_id:
+          type: string
+          example: paypal_packet_gate
+        subject:
+          type: object
+          required:
+            - kind
+            - ref
+          properties:
+            kind:
+              type: string
+              example: payment_packet
+            ref:
+              type: string
+              example: bundle:payment_packet_tampered
+        evidence:
+          $ref: '#/components/schemas/Evidence'
+        limits:
+          type: array
+          description: >
+            Limits to assess, each with its assessed value. When
+            absent, the checkpoint's standing limits are used, with
+            the evidence value as the assessed value.
+          items:
+            $ref: '#/components/schemas/DeclaredLimit'
+    Evidence:
+      type: object
+      description: >
+        The minimal evidence envelope, embedded in every decision
+        record. evidence_id is assigned when absent. validation_id
+        is the validation record behind the check; null is
+        representable so a checkpoint that requires validation can
+        decline over it (VALIDATION_MISSING) — an APPROVED decision
+        can never rest on a null validation_id where the checkpoint
+        declares requires_validation: true.
+      properties:
+        evidence_id:
+          type: string
+          example: ev_51bd09c2a7e44f10
+        property:
+          type: string
+          example: bundle_integrity
+        value:
+          description: The assessed value (number, or category string).
+          example: 0
+        unit:
+          type:
+            - string
+            - 'null'
+          example: match
+        check_id:
+          type: string
+          example: bundle-verify-v1
+        validation_id:
+          type:
+            - string
+            - 'null'
+          example: val_tier_limits_2026-11-01
+        validation_expires_at:
+          type: string
+          format: date-time
+          description: "Request-side only: the validation record's expiry instant."
+    DeclaredLimit:
+      type: object
+      required:
+        - limit_name
+        - limit_type
+        - operator
+        - limit_value
+      properties:
+        limit_name:
+          type: string
+          example: transaction_amount_limit
+        limit_type:
+          type: string
+          enum:
+            - verification
+            - hard_policy_limit
+            - restricted_category
+            - eligibility_limit
+            - document
+        operator:
+          type: string
+          enum:
+            - lt
+            - lte
+            - gt
+            - gte
+            - eq
+            - neq
+        limit_value:
+          description: The limit, as a number (with unit) or a category string.
+          example: 2000
+        assessed_value:
+          description: What the check actually read. Defaults to the evidence value.
+          example: 2450
+        unit:
+          type: string
+          description: REQUIRED whenever limit_value / assessed_value are numeric.
+          example: USD
+        check_id:
+          type: string
+        validation_id:
+          type:
+            - string
+            - 'null'
+        validation_expires_at:
+          type: string
+          format: date-time
+        steps_to_resolve:
+          type: string
+          description: >
+            What to change or provide so the case closes the other
+            way. When absent, the checkpoint generates it from the
+            comparison itself, so the text can never disagree with
+            the operator it ships beside.
+    EvaluationResponse:
+      type: object
+      required:
+        - ok
+        - decision
+      properties:
+        ok:
+          type: boolean
+          example: true
+        decision:
+          $ref: '#/components/schemas/DecisionRecord'
+        receipt:
+          type: object
+          description: The Receipts chain entry that recorded this decision.
+        receipt_verifies:
+          type: boolean
+    DecisionRecord:
+      type: object
+      required:
+        - decision
+        - checkpoint_id
+        - gate_version
+        - decided_by
+        - case_id
+        - evaluated_at
+        - subject
+        - evidence
+        - reasons
+      properties:
+        format:
+          type: string
+          example: resolution-decision/1
+        decision:
+          type: string
+          enum:
+            - APPROVED
+            - DECLINED
+        checkpoint_id:
+          type: string
+          example: paypal_packet_gate
+        gate_version:
+          type: string
+          example: 2.0.0
+        decided_by:
+          type: string
+          example: paypal_packet_gate
+        case_id:
+          type: string
+          example: case_9f2c1ab47d0e4c55a1b3e8d27f04c6aa
+        evaluated_at:
+          type: string
+          format: date-time
+        subject:
+          type: object
+        evidence:
+          $ref: '#/components/schemas/Evidence'
+        reason:
+          description: The primary reason — always equal to reasons[0]; null when APPROVED.
+          anyOf:
+            - $ref: '#/components/schemas/Reason'
+            - type: 'null'
+        reasons:
+          type: array
+          description: Every reason behind the decision, in published precedence order.
+          items:
+            $ref: '#/components/schemas/Reason'
+    Reason:
+      type: object
+      required:
+        - reason_code
+        - limit_type
+        - limit_name
+        - operator
+        - steps_to_resolve
+      properties:
+        reason_code:
+          type: string
+          enum:
+            - LIMIT_NOT_MET
+            - POLICY_LIMIT_EXCEEDED
+            - RESTRICTED_CATEGORY
+            - VERIFICATION_MISMATCH
+            - DOCUMENT_NOT_ACCEPTED
+            - VALIDATION_MISSING
+            - VALIDATION_EXPIRED
+          description: |
+            LIMIT_NOT_MET — the assessed value does not satisfy an
+              eligibility limit (2450 USD against a 2000 USD tier
+              limit).
+            POLICY_LIMIT_EXCEEDED — a hard policy limit is exceeded;
+              no case-level step moves it, only splitting the
+              payment or a policy review does.
+            RESTRICTED_CATEGORY — the subject falls in a category
+              restricted for this rail.
+            VERIFICATION_MISMATCH — the artefact does not recompute
+              to its sealed record (a changed payment packet).
+            DOCUMENT_NOT_ACCEPTED — a supplied document is outside
+              the accepted types, or unreadable as supplied.
+            VALIDATION_MISSING / VALIDATION_EXPIRED — the check
+              behind the decision cannot show a current validation
+              record; the decision is not made on an unvalidated
+              check. These reasons carry typed instants
+              (required_valid_at, validation_expires_at) instead of
+              the numeric pair.
+        limit_type:
+          type: string
+          enum:
+            - verification
+            - hard_policy_limit
+            - restricted_category
+            - eligibility_limit
+            - document
+            - validation
+        limit_name:
+          type: string
+          example: bundle_certificate_match
+        operator:
+          type: string
+          enum:
+            - lt
+            - lte
+            - gt
+            - gte
+            - eq
+            - neq
+        limit_value:
+          description: Numeric-only when present; validation reasons omit it.
+          example: 1
+        assessed_value:
+          description: Numeric-only when present; validation reasons omit it.
+          example: 0
+        unit:
+          type: string
+          description: REQUIRED whenever limit_value / assessed_value are numeric.
+          example: match
+        steps_to_resolve:
+          type: string
+          description: |
+            REQUIRED and contractual: names what to change or
+            provide — the variable, the limit, the comparison — so
+            the case closes the other way. Generic text ("try
+            again", "insufficient") is a contract violation.
+          example: >-
+            Resubmit a packet whose bundle verifies against its
+            lock record: 0 changed, 0 added, 0 removed.
+        check_id:
+          type: string
+        validation_id:
+          type:
+            - string
+            - 'null'
+        required_valid_at:
+          type: string
+          format: date-time
+          description: Validation reasons only — the evaluation instant.
+        validation_expires_at:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          description: Validation reasons only — the record's expiry instant.
+    CheckpointDescription:
+      type: object
+      required:
+        - checkpoint_id
+        - requires_validation
+        - limits
+        - precedence
+      properties:
+        checkpoint_id:
+          type: string
+        description:
+          type: string
+        gate_version:
+          type: string
+        decided_by:
+          type: string
+        requires_validation:
+          type: boolean
+          description: >
+            Where true, an APPROVED decision can never rest on a
+            null validation_id, and a missing or expired validation
+            declines the case alone.
+        limits:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeclaredLimit'
+        precedence:
+          type: array
+          items:
+            type: string
+        reason_codes:
+          type: array
+          items:
+            type: string
+    CaseResponse:
+      type: object
+      required:
+        - ok
+        - decision
+      properties:
+        ok:
+          type: boolean
+        decision:
+          $ref: '#/components/schemas/DecisionRecord'
+        receipt:
+          type:
+            - object
+            - 'null'
+          description: The Receipts chain entry that recorded this decision.
+    Problem:
+      type: object
+      description: Transport faults only. A checkpoint's "no" is never a Problem — it is a 200 DECLINED decision.
+      required:
+        - title
+      properties:
+        title:
+          type: string
+        detail:
+          type: string
