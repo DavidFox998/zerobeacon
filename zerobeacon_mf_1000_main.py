@@ -141,6 +141,12 @@ app.include_router(
     trust_harness.router,
     dependencies=[Depends(require_tier("enterprise_1000"))],
 )
+# Refusal layer — the gates/verdicts contract surface, same
+# enterprise X-API-Key gate as the trust harness module calls.
+app.include_router(
+    trust_harness.gates_router,
+    dependencies=[Depends(require_tier("enterprise_1000"))],
+)
 
 
 # ── Webhook alert helper ──────────────────────────────────────────────────────
