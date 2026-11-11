@@ -70,6 +70,9 @@ disputes = _load("disputes", _ROOT / "disputes" / "disputes.py")
 disputes_mcp = _load("disputes_mcp", _ROOT / "disputes" / "disputes_mcp.py")
 bundle_lock = _load("bundle_lock", _ROOT / "bundles" / "bundle_lock.py")
 bundles_mcp = _load("bundles_mcp", _ROOT / "bundles" / "bundles_mcp.py")
+resolution = _load("resolution", _ROOT / "resolution" / "resolution.py")
+resolution_mcp = _load(
+    "resolution_mcp", _ROOT / "resolution" / "resolution_mcp.py")
 amazon_pay = _load(
     "amazon_pay", _ROOT / "rails" / "amazon_pay" / "amazon_pay.py")
 
@@ -188,6 +191,77 @@ def _bundles_call(name: str, arguments: dict) -> dict:
     return bundles_mcp.call_tool(name, arguments, store=_BUNDLE_STORE)
 
 
+RESOLUTION_CASES_FILE = "resolution-cases.json"
+
+
+def _resolution_cases_path() -> str:
+    return os.path.join(_data_dir(), RESOLUTION_CASES_FILE)
+
+
+def _resolution_cases() -> dict:
+    try:
+        with open(_resolution_cases_path(), "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+class _CaseStore:
+    """Persist Resolution Layer decision records under their
+    case_ids, beside the receipts chain — the audit trail a case is
+    retrieved from."""
+
+    def save(self, case_id: str, entry: dict) -> None:
+        path = _resolution_cases_path()
+        with _LOCK:
+            cases = _resolution_cases()
+            cases[case_id] = entry
+            os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(cases, handle)
+            os.chmod(path, 0o600)
+
+    def load(self, case_id: str) -> dict | None:
+        entry = _resolution_cases().get(case_id)
+        return entry if isinstance(entry, dict) else None
+
+
+_CASE_STORE = _CaseStore()
+
+
+def _resolution_decide(request_body: dict) -> tuple[dict, dict]:
+    """Evaluate, write the decision to the Receipts chain, and store
+    the case. Returns (decision record, recorded) — every verdict,
+    APPROVED or DECLINED, is receipted (contract rule 9)."""
+    record = resolution.evaluate(request_body)
+    primary = record["reason"] or {}
+    recorded = record_receipt(
+        "trust-resolution",
+        {"method": "POST", "path": "/api/trust/resolution/evaluate",
+         "checkpoint_id": record["checkpoint_id"],
+         "case_id": record["case_id"]},
+        {"decision": record["decision"],
+         "case_id": record["case_id"],
+         "reason_code": primary.get("reason_code")},
+    )
+    _CASE_STORE.save(record["case_id"], {
+        "record": record, "receipt": recorded["receipt"]})
+    return record, recorded
+
+
+def _resolution_evaluator(arguments: dict) -> dict:
+    record, recorded = _resolution_decide(arguments)
+    return {"decision": record, "receipt": recorded["receipt"],
+            "receipt_verifies": recorded["bundle_ok"]}
+
+
+def _resolution_call(name: str, arguments: dict) -> dict:
+    return resolution_mcp.call_tool(
+        name, arguments, evaluator=_resolution_evaluator)
+
+
 def _resolve_bundle_record(body: dict) -> tuple[dict | None, str | None]:
     """A verify's lock record: an explicit record object wins; else the
     record stored under the label. (None, error) when neither resolves."""
@@ -220,6 +294,7 @@ _DISPATCH = {
     "dispute_route": _disputes_call,
     "bundle_lock": _bundles_call,
     "bundle_verify": _bundles_call,
+    "resolution_evaluate": _resolution_call,
 }
 
 HARNESS_TOOL_NAMES = tuple(_DISPATCH)
@@ -581,11 +656,12 @@ _PAGE = """<!DOCTYPE html>
       <tr><td>Receipts, record</td><td><code>POST /api/trust/receipts/append</code><br><code>POST /api/trust/receipts/verify</code></td><td><code>append_receipt</code><br><code>verify_receipts</code></td></tr>
       <tr><td>Disputes, routing</td><td><code>POST /api/trust/disputes/route</code></td><td><code>dispute_route</code></td></tr>
       <tr><td>Bundle Lock, folder seal</td><td><code>POST /api/trust/bundles/lock</code><br><code>POST /api/trust/bundles/verify</code></td><td><code>bundle_lock</code><br><code>bundle_verify</code></td></tr>
+      <tr><td>Resolution Layer, decisions with reasons</td><td><code>POST /api/trust/resolution/evaluate</code><br><code>GET /api/trust/resolution/checkpoints/{checkpoint_id}</code><br><code>GET /api/trust/resolution/cases/{case_id}</code></td><td><code>resolution_evaluate</code></td></tr>
       <tr><td>PayPal packet gate</td><td><code>POST /api/trust/paypal/propose-packet</code></td><td>—</td></tr>
       <tr><td>Amazon Pay rail (staged, fixture)</td><td><code>POST /api/trust/amazonpay/propose</code><br><code>POST /api/trust/amazonpay/capture</code></td><td>—</td></tr>
     </tbody>
   </table>
-  <p>MCP transport for the fourteen tools above is <code>POST /api/trust/mcp</code>
+  <p>MCP transport for the fifteen tools above is <code>POST /api/trust/mcp</code>
   (JSON-RPC, protocol 2025-11-25). The catalogue <code>POST /mcp</code> list
   is unchanged.</p>
 
@@ -878,6 +954,61 @@ async def bundle_verify_endpoint(request: Request):
     }
 
 
+@router.post("/resolution/evaluate")
+async def resolution_evaluate_endpoint(request: Request):
+    """The Resolution Layer: assess a subject at a checkpoint and
+    return the decision record. A decline is a 200 answer with its
+    reasons, never an error; only a malformed request or an unknown
+    checkpoint is an error. Every decision is written to the
+    Receipts chain and stored under its case_id."""
+    body, err = _read_json(await request.body())
+    if err:
+        return err
+    try:
+        record, recorded = _resolution_decide(body)
+    except resolution.UnknownCheckpointError as exc:
+        return JSONResponse(
+            {"ok": False, "error": str(exc)}, status_code=404)
+    except resolution.ResolutionRequestError as exc:
+        return JSONResponse(
+            {"ok": False, "error": str(exc)}, status_code=400)
+    return {
+        "ok": True,
+        "decision": record,
+        "receipt": recorded["receipt"],
+        "receipt_verifies": recorded["bundle_ok"],
+    }
+
+
+@router.get("/resolution/checkpoints/{checkpoint_id}")
+async def resolution_checkpoint_endpoint(checkpoint_id: str):
+    """What this checkpoint decides: its published limits with
+    their operators, whether it requires validation, and the
+    precedence order its reasons come back in."""
+    try:
+        described = resolution.describe_checkpoint(checkpoint_id)
+    except resolution.UnknownCheckpointError as exc:
+        return JSONResponse(
+            {"ok": False, "error": str(exc)}, status_code=404)
+    return {"ok": True, "checkpoint": described}
+
+
+@router.get("/resolution/cases/{case_id}")
+async def resolution_case_endpoint(case_id: str):
+    """Retrieve a decision record by its case_id, exactly as
+    issued, with the Receipts entry that recorded it."""
+    entry = _CASE_STORE.load(case_id)
+    if entry is None:
+        return JSONResponse(
+            {"ok": False, "error": f"no case stored under {case_id!r}"},
+            status_code=404)
+    return {
+        "ok": True,
+        "decision": entry["record"],
+        "receipt": entry.get("receipt"),
+    }
+
+
 @router.post("/flow")
 async def trust_flow(request: Request):
     body, err = _read_json(await request.body())
@@ -914,6 +1045,7 @@ async def trust_mcp(request: Request):
             + list(receipts_mcp.TOOLS)
             + list(disputes_mcp.TOOLS)
             + list(bundles_mcp.TOOLS)
+            + list(resolution_mcp.TOOLS)
         )
         return {"jsonrpc": "2.0", "id": mid, "result": {"tools": tools}}
     if method == "tools/call":
@@ -1250,6 +1382,44 @@ async def paypal_propose_packet(request: Request):
             action,
             "refusal:bundle_lock",
         )
+        changed = report.get("changed", [])
+        added = report.get("added", [])
+        removed = report.get("removed", [])
+
+        def _named(names: list, word: str) -> str:
+            return f"{len(names)} {word}" + (
+                f" ({', '.join(names)})" if names else "")
+
+        decision_record, _decision_receipt = _resolution_decide({
+            "checkpoint_id": "paypal_packet_gate",
+            "subject": {
+                "kind": "payment_packet",
+                "ref": f"bundle:{report.get('label') or 'payment_packet'}",
+            },
+            "evidence": {
+                "property": "bundle_integrity",
+                "value": 0,
+                "unit": "match",
+                "check_id": "bundle-verify-v1",
+                "validation_id": None,
+            },
+            "limits": [{
+                "limit_name": "bundle_certificate_match",
+                "limit_type": "verification",
+                "operator": "eq",
+                "limit_value": 1,
+                "assessed_value": 0,
+                "unit": "match",
+                "check_id": "bundle-verify-v1",
+                "validation_id": None,
+                "steps_to_resolve": (
+                    "Resubmit a packet whose bundle verifies "
+                    "against its lock record: "
+                    f"{_named(changed, 'changed')}, "
+                    f"{_named(added, 'added')}, "
+                    f"{_named(removed, 'removed')}."),
+            }],
+        })
         return {
             "ok": False,
             "gate": "refused",
@@ -1257,6 +1427,7 @@ async def paypal_propose_packet(request: Request):
             "certificate": None,
             "paypal": None,
             "packet": report,
+            "resolution": decision_record,
             "receipt": recorded["receipt"],
             "receipt_verifies": recorded["bundle_ok"],
         }
